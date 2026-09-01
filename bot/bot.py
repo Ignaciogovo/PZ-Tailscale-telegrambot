@@ -4,7 +4,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 import docker
-from rcon import get_players, save_server, quit_server, kick_player, ban_player, unban_player, add_user
+from pz_rcon import get_players, save_server, quit_server, kick_player, ban_player, unban_player, add_user
 from keyboards import main_menu, players_menu, player_detail_menu, admin_menu, role_menu, confirm_menu
 
 logging.basicConfig(level=logging.INFO)
