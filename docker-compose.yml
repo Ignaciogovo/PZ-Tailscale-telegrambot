@@ -1,0 +1,52 @@
+services:
+
+  # ==========================================================
+  # TAILSCALE
+  # ==========================================================
+
+  tailscale:
+    image: tailscale/tailscale:latest
+    container_name: tailscale-project-zomboid
+    hostname: project_projectz-pollito
+    restart: unless-stopped
+    environment:
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_USERSPACE: "false"
+      TS_ACCEPT_DNS: "false"
+    volumes:
+      - /srv/data/project-zomboid/tailscale:/var/lib/tailscale
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
+    networks:
+      - project-zomboid
+
+  # ==========================================================
+  # PROJECT ZOMBOID
+  # ==========================================================
+
+  projectzomboid:
+    image: indifferentbroccoli/projectzomboid-server-docker:latest
+    container_name: project-zomboid
+    restart: unless-stopped
+    stop_grace_period: 30s
+    env_file:
+      - .env
+    environment:
+      TZ: Europe/Madrid
+    volumes:
+      - /srv/data/project-zomboid/server-files:/project-zomboid
+      - /srv/data/project-zomboid/server-data:/project-zomboid-config
+    network_mode: "service:tailscale"
+    mem_limit: 5g
+    depends_on:
+      - tailscale
+
+networks:
+  project-zomboid:
+    name: project-zomboid
+    driver: bridge
