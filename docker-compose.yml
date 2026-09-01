@@ -46,6 +46,26 @@ services:
     depends_on:
       - tailscale
 
+  # ==========================================================
+  # TELEGRAM BOT
+  # ==========================================================
+
+  telegram-bot:
+    build: ./bot
+    container_name: pz-telegram-bot
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      RCON_HOST: 127.0.0.1
+      RCON_PORT: ${RCON_PORT:-27015}
+      PZ_CONTAINER: project-zomboid
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    network_mode: "service:tailscale"
+    depends_on:
+      - tailscale
+
 networks:
   project-zomboid:
     name: project-zomboid
