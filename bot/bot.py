@@ -22,21 +22,13 @@ docker_client = docker.from_env()
 
 async def safe_edit(query, text, reply_markup=None):
     try:
-        logger.info(f"Intentando editar mensaje: {text[:50]}...")
         await query.edit_message_text(text, reply_markup=reply_markup)
-        logger.info("Mensaje editado correctamente")
     except BadRequest as e:
         if "Message is not modified" not in str(e):
-            logger.error(f"Error al editar mensaje: {e}")
             raise
-        else:
-            logger.warning("Mensaje no modificado (ignorado)")
 
 def authorized(update: Update) -> bool:
-    chat_id = update.effective_chat.id
-    if chat_id not in ALLOWED_CHAT_IDS:
-        return False
-    return True
+    return update.effective_chat.id in ALLOWED_CHAT_IDS
 
 async def get_pz_status() -> tuple[bool, str]:
     try:

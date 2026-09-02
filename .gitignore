@@ -1,5 +1,6 @@
 .env
 logs.txt
 estado-docker.txt
+mods-analysis/mods_report.json
 
 data/project-zomboid/

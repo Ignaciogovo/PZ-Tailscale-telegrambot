@@ -50,6 +50,3 @@ def unban_player(steam_id: str) -> str:
 
 def add_user(username: str, password: str, role: str) -> str:
     return rcon_call(f"adduser {username} {password} {role}")
-
-def remove_user(username: str) -> str:
-    return rcon_call(f"removeuser {username}")

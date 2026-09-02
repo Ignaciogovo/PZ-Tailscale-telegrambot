@@ -65,8 +65,3 @@ services:
     network_mode: "service:tailscale"
     depends_on:
       - tailscale
-
-networks:
-  project-zomboid:
-    name: project-zomboid
-    driver: bridge
