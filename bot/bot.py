@@ -41,11 +41,15 @@ def authorized(update: Update) -> bool:
 async def get_pz_status() -> tuple[bool, str]:
     try:
         container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
+        container.reload()
         status = container.status
-        if status == "restarting":
-            return False, "restarting"
-        online = status == "running"
-        return online, status
+        health = container.health
+        logger.info(f"Container status={status}, health={health}")
+        if status != "running":
+            return False, status
+        if health in ("starting", "unhealthy"):
+            return False, health
+        return True, health
     except docker.errors.NotFound:
         return False, "not_found"
     except Exception as e:
@@ -125,7 +129,12 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⛔ No autorizado.")
         return
     online, status = await get_pz_status()
-    text = f"🟢 Servidor ONLINE" if online else f"🔴 Servidor OFFLINE"
+    if status == "starting":
+        text = "🔄 REINICIANDO..."
+    elif status == "unhealthy":
+        text = "🔴 Problemas con el servidor"
+    else:
+        text = f"🟢 Servidor ONLINE" if online else f"🔴 Servidor OFFLINE"
     text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
     await update.message.reply_text(text, reply_markup=main_menu(online))
 
@@ -147,8 +156,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "main":
         if status == "not_found":
             text = "⚠️ Contenedor PZ no existe\n\nEjecuta en el host:\n`docker compose up -d projectzomboid`"
-        elif status == "restarting":
-            text = f"🔄 REINICIANDO..."
+        elif status == "starting":
+            text = "🔄 REINICIANDO..."
+            text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
+        elif status == "unhealthy":
+            text = "🔴 Problemas con el servidor"
             text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
         else:
             text = f"🟢 Servidor ONLINE" if online else f"🔴 Servidor OFFLINE"
@@ -156,13 +168,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(query, text, reply_markup=main_menu(online))
 
     elif data == "status":
-        if status == "restarting":
+        if status == "starting":
             text = "🔄 REINICIANDO"
+        elif status == "unhealthy":
+            text = "🔴 Problemas con el servidor"
         elif online:
             text = "🟢 ONLINE"
         else:
             text = "🔴 OFFLINE"
-        text += f"\nEstado Docker: {status}"
+        text += f"\nEstado: {status}"
         await safe_edit(query, text, reply_markup=main_menu(online))
 
     elif data == "players":
