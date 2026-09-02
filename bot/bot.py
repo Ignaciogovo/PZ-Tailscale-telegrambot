@@ -42,6 +42,8 @@ async def get_pz_status() -> tuple[bool, str]:
     try:
         container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
         status = container.status
+        if status == "restarting":
+            return False, "restarting"
         online = status == "running"
         return online, status
     except docker.errors.NotFound:
@@ -145,13 +147,21 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "main":
         if status == "not_found":
             text = "⚠️ Contenedor PZ no existe\n\nEjecuta en el host:\n`docker compose up -d projectzomboid`"
+        elif status == "restarting":
+            text = f"🔄 REINICIANDO..."
+            text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
         else:
             text = f"🟢 Servidor ONLINE" if online else f"🔴 Servidor OFFLINE"
             text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
         await safe_edit(query, text, reply_markup=main_menu(online))
 
     elif data == "status":
-        text = "🟢 ONLINE" if online else "🔴 OFFLINE"
+        if status == "restarting":
+            text = "🔄 REINICIANDO"
+        elif online:
+            text = "🟢 ONLINE"
+        else:
+            text = "🔴 OFFLINE"
         text += f"\nEstado Docker: {status}"
         await safe_edit(query, text, reply_markup=main_menu(online))
 
