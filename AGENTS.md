@@ -1,20 +1,19 @@
 # AGENTS.md
 
 ## Contexto del proyecto
-Servidor dedicado de Project Zomboid B42 ejecutado mediante Docker, con acceso externo a través de Tailscale.
-Compose: docker-compose.yml
-Configuración: .env
-Datos: /srv/data/project-zomboid/
-Imagen: indifferentbroccoli/projectzomboid-server-docker
-Mods: configurados manualmente en server-data/Server/<SERVER_NAME>.ini (Mods= y WorkshopItems=).
-Red: el contenedor de Project Zomboid utiliza la red del contenedor Tailscale (network_mode: service:tailscale).
-Máximo 8 jugadores.
-Memoria: 2 GB mínimo / 5 GB máximo.
-Configuración mediante .env.
-Mods gestionados mediante Steam Workshop (descargados por PZ al arrancar).
-- **Repositorio base**: https://github.com/indifferentbroccoli/projectzomboid-server-docker
-- Consultar para entender: Dockerfile, scripts de inicio, variables de entorno, cómo funciona la imagen.
-- Este proyecto es una adaptación con Tailscale, no un fork.
+Servidor dedicado de Project Zomboid B42 accesible desde cualquier lugar y gestionable vía Telegram.
+
+**Por qué**: Permite jugar con amigos sin depender de port-forwarding ni IPs estáticas (Tailscale), y administrar el servidor desde el móvil sin acceder a la consola del host (Telegram Bot).
+
+**Stack** (3 servicios Docker en `docker-compose.yml`, config vía `.env`):
+
+- **Project Zomboid** (B42): Servidor dedicado de juego. Imagen `indifferentbroccoli/projectzomboid-server-docker`. Datos en `./data/project-zomboid/`. Máx 8 jugadores, 2-5 GB RAM. Mods vía Steam Workshop.
+- **Tailscale**: Acceso externo a la red del servidor. Contenedor de red compartido (`network_mode: service:tailscale`). Autenticación vía `TAILSCALE_AUTHKEY`.
+- **Telegram Bot**: Administración remota (arrancar/apagar/reiniciar, gestionar jugadores). Bot Python en `bot/`. Comunica con PZ vía RCON (`127.0.0.1:27015`) y con Docker vía socket. Auth por `TELEGRAM_CHAT_ID`.
+
+Arquitectura de red: PZ y Bot comparten red con Tailscale → RCON accesible localmente.
+
+- **Repositorio upstream**: `indifferentbroccoli/projectzomboid-server-docker` guardado en `pz-docker/` como referencia. Consultar para entender Dockerfile, scripts, variables de entorno. Actualizar cuando se quiera sincronizar con la imagen oficial.
 ---
 
 
