@@ -5,6 +5,7 @@ from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 import docker
+import docker.errors
 from pz_rcon import get_players, save_server, quit_server, kick_player, ban_player, unban_player, add_user
 from keyboards import main_menu, players_menu, player_detail_menu, admin_menu, role_menu, confirm_menu
 
@@ -37,6 +38,8 @@ def get_pz_status() -> tuple[bool, str]:
         status = container.status
         online = status == "running"
         return online, status
+    except docker.errors.NotFound:
+        return False, "not_found"
     except Exception as e:
         return False, f"error: {e}"
 
@@ -45,6 +48,8 @@ def start_container() -> tuple[bool, str]:
         container = docker_client.containers.get(PZ_CONTAINER)
         container.start()
         return True, "Servidor arrancando..."
+    except docker.errors.NotFound:
+        return False, "Contenedor no existe. Ejecuta: docker compose up -d projectzomboid"
     except Exception as e:
         return False, f"Error: {e}"
 
@@ -59,6 +64,8 @@ def stop_container() -> tuple[bool, str]:
         container = docker_client.containers.get(PZ_CONTAINER)
         container.stop(timeout=30)
         return True, "Servidor apagado."
+    except docker.errors.NotFound:
+        return False, "Contenedor no existe"
     except Exception as e:
         return False, f"Error: {e}"
 
@@ -77,6 +84,8 @@ def restart_container() -> tuple[bool, str]:
         container = docker_client.containers.get(PZ_CONTAINER)
         container.restart(timeout=30)
         return True, "Reiniciando..."
+    except docker.errors.NotFound:
+        return False, "Contenedor no existe"
     except Exception as e:
         return False, f"Error: {e}"
 
@@ -101,8 +110,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     online, status = get_pz_status()
 
     if data == "main":
-        text = f"🟢 Servidor ONLINE" if online else f"🔴 Servidor OFFLINE"
-        text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
+        if status == "not_found":
+            text = "⚠️ Contenedor PZ no existe\n\nEjecuta en el host:\n`docker compose up -d projectzomboid`"
+        else:
+            text = f"🟢 Servidor ONLINE" if online else f"🔴 Servidor OFFLINE"
+            text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
         await safe_edit(query, text, reply_markup=main_menu(online))
 
     elif data == "status":
@@ -187,7 +199,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit(query, "🟢 Ya está online", reply_markup=main_menu(online))
             return
         ok, msg = start_container()
-        await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(ok))
+        if not ok and "no existe" in msg:
+            await safe_edit(query, f"❌ {msg}", reply_markup=main_menu(False))
+        else:
+            await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(ok))
 
     elif data == "stop":
         if not online:
