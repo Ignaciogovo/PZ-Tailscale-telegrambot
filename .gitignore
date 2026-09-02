@@ -1,3 +1,5 @@
 .env
+logs.txt
+estado-docker.txt
 
 data/project-zomboid/
