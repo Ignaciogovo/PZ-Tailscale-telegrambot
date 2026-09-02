@@ -201,22 +201,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             await safe_edit(query, f"Error: {e}", reply_markup=player_detail_menu(username))
 
-    elif data.startswith("confirm:"):
-        parts = data.split(":")
-        action, username = parts[1], parts[2] if len(parts) > 2 else ""
-        try:
-            if action == "kick":
-                kick_player(username)
-                await safe_edit(query, f"✅ {username} kickeado", reply_markup=main_menu(online))
-            elif action == "ban":
-                ban_player(username)
-                await safe_edit(query, f"✅ {username} baneado", reply_markup=main_menu(online))
-            elif action == "unban":
-                unban_player(username)
-                await safe_edit(query, f"✅ {username} desbaneado", reply_markup=main_menu(online))
-        except Exception as e:
-            await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
-
     elif data == "save":
         if not online:
             await safe_edit(query, "🔴 Servidor offline", reply_markup=main_menu(online))
@@ -266,6 +250,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ok, msg = await restart_container()
         logger.info(f"Resultado restart_container: ok={ok}, msg={msg}")
         await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(True))
+
+    elif data.startswith("confirm:"):
+        parts = data.split(":")
+        action, username = parts[1], parts[2] if len(parts) > 2 else ""
+        try:
+            if action == "kick":
+                kick_player(username)
+                await safe_edit(query, f"✅ {username} kickeado", reply_markup=main_menu(online))
+            elif action == "ban":
+                ban_player(username)
+                await safe_edit(query, f"✅ {username} baneado", reply_markup=main_menu(online))
+            elif action == "unban":
+                unban_player(username)
+                await safe_edit(query, f"✅ {username} desbaneado", reply_markup=main_menu(online))
+        except Exception as e:
+            await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
 
     elif data == "admin":
         await safe_edit(query, "🛠 ADMINISTRACIÓN", reply_markup=admin_menu())
