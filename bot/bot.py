@@ -1,5 +1,6 @@
 import os
 import logging
+import asyncio
 from telegram import Update
 from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
@@ -32,9 +33,9 @@ def authorized(update: Update) -> bool:
         return False
     return True
 
-def get_pz_status() -> tuple[bool, str]:
+async def get_pz_status() -> tuple[bool, str]:
     try:
-        container = docker_client.containers.get(PZ_CONTAINER)
+        container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
         status = container.status
         online = status == "running"
         return online, status
@@ -43,46 +44,45 @@ def get_pz_status() -> tuple[bool, str]:
     except Exception as e:
         return False, f"error: {e}"
 
-def start_container() -> tuple[bool, str]:
+async def start_container() -> tuple[bool, str]:
     try:
-        container = docker_client.containers.get(PZ_CONTAINER)
-        container.start()
+        container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
+        await asyncio.to_thread(container.start)
         return True, "Servidor arrancando..."
     except docker.errors.NotFound:
         return False, "Contenedor no existe. Ejecuta: docker compose up -d projectzomboid"
     except Exception as e:
         return False, f"Error: {e}"
 
-def stop_container() -> tuple[bool, str]:
+async def stop_container() -> tuple[bool, str]:
     try:
-        save_server()
-        quit_server()
+        await asyncio.to_thread(save_server)
+        await asyncio.to_thread(quit_server)
         return True, "Guardando y apagando..."
     except Exception:
         pass
     try:
-        container = docker_client.containers.get(PZ_CONTAINER)
-        container.stop(timeout=30)
+        container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
+        await asyncio.to_thread(container.stop, timeout=30)
         return True, "Servidor apagado."
     except docker.errors.NotFound:
         return False, "Contenedor no existe"
     except Exception as e:
         return False, f"Error: {e}"
 
-def restart_container() -> tuple[bool, str]:
+async def restart_container() -> tuple[bool, str]:
     try:
-        save_server()
-        quit_server()
-        import time
-        time.sleep(5)
-        container = docker_client.containers.get(PZ_CONTAINER)
-        container.start()
+        await asyncio.to_thread(save_server)
+        await asyncio.to_thread(quit_server)
+        await asyncio.sleep(5)
+        container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
+        await asyncio.to_thread(container.start)
         return True, "Reiniciando..."
     except Exception:
         pass
     try:
-        container = docker_client.containers.get(PZ_CONTAINER)
-        container.restart(timeout=30)
+        container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
+        await asyncio.to_thread(container.restart, timeout=30)
         return True, "Reiniciando..."
     except docker.errors.NotFound:
         return False, "Contenedor no existe"
@@ -93,7 +93,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not authorized(update):
         await update.message.reply_text("⛔ No autorizado.")
         return
-    online, status = get_pz_status()
+    online, status = await get_pz_status()
     text = f"🟢 Servidor ONLINE" if online else f"🔴 Servidor OFFLINE"
     text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
     await update.message.reply_text(text, reply_markup=main_menu(online))
@@ -107,7 +107,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     data = query.data
 
-    online, status = get_pz_status()
+    online, status = await get_pz_status()
 
     if data == "main":
         if status == "not_found":
@@ -198,7 +198,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if online:
             await safe_edit(query, "🟢 Ya está online", reply_markup=main_menu(online))
             return
-        ok, msg = start_container()
+        ok, msg = await start_container()
         if not ok and "no existe" in msg:
             await safe_edit(query, f"❌ {msg}", reply_markup=main_menu(False))
         else:
@@ -211,7 +211,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(query, "¿Apagar servidor?", reply_markup=confirm_menu("stop"))
 
     elif data == "confirm:stop":
-        ok, msg = stop_container()
+        ok, msg = await stop_container()
         await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(False))
 
     elif data == "restart":
@@ -221,7 +221,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await safe_edit(query, "¿Reiniciar servidor?", reply_markup=confirm_menu("restart"))
 
     elif data == "confirm:restart":
-        ok, msg = restart_container()
+        ok, msg = await restart_container()
         await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(True))
 
     elif data == "admin":
