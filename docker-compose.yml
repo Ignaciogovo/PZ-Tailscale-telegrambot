@@ -40,7 +40,7 @@ services:
       TZ: Europe/Madrid
     volumes:
       - ./data/project-zomboid/server-files:/project-zomboid
-      - .data/project-zomboid/server-data:/project-zomboid-config
+      - ./data/project-zomboid/server-data:/project-zomboid-config
     network_mode: "service:tailscale"
     mem_limit: 5g
     depends_on:
