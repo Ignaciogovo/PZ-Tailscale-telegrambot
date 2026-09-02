@@ -1,6 +1,7 @@
 import os
 import logging
 from telegram import Update
+from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
 import docker
@@ -16,6 +17,13 @@ PZ_CONTAINER = os.getenv("PZ_CONTAINER", "project-zomboid")
 MAX_PLAYERS = int(os.getenv("MAX_PLAYERS", "8"))
 
 docker_client = docker.from_env()
+
+async def safe_edit(query, text, reply_markup=None):
+    try:
+        await query.edit_message_text(text, reply_markup=reply_markup)
+    except BadRequest as e:
+        if "Message is not modified" not in str(e):
+            raise
 
 def authorized(update: Update) -> bool:
     chat_id = update.effective_chat.id
@@ -95,16 +103,16 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "main":
         text = f"🟢 Servidor ONLINE" if online else f"🔴 Servidor OFFLINE"
         text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
-        await query.edit_message_text(text, reply_markup=main_menu(online))
+        await safe_edit(query, text, reply_markup=main_menu(online))
 
     elif data == "status":
         text = "🟢 ONLINE" if online else "🔴 OFFLINE"
         text += f"\nEstado Docker: {status}"
-        await query.edit_message_text(text, reply_markup=main_menu(online))
+        await safe_edit(query, text, reply_markup=main_menu(online))
 
     elif data == "players":
         if not online:
-            await query.edit_message_text("🔴 Servidor offline", reply_markup=main_menu(online))
+            await safe_edit(query, "🔴 Servidor offline", reply_markup=main_menu(online))
             return
         try:
             players = get_players()
@@ -114,39 +122,39 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text = f"👥 JUGADORES ({len(players)}/{MAX_PLAYERS})\n\n"
                 for p in players:
                     text += f"🟢 {p['name']}\n   Steam: {p['steam_id']}\n   Estado: ONLINE\n\n"
-            await query.edit_message_text(text, reply_markup=players_menu(players))
+            await safe_edit(query, text, reply_markup=players_menu(players))
         except Exception as e:
-            await query.edit_message_text(f"Error: {e}", reply_markup=main_menu(online))
+            await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
 
     elif data.startswith("player:"):
         username = data.split(":", 1)[1]
         text = f"👤 {username.upper()}\n\nEstado: 🟢 ONLINE\nRol: user"
-        await query.edit_message_text(text, reply_markup=player_detail_menu(username))
+        await safe_edit(query, text, reply_markup=player_detail_menu(username))
 
     elif data.startswith("kick:"):
         username = data.split(":", 1)[1]
-        await query.edit_message_text(f"¿Kick a {username}?", reply_markup=confirm_menu("kick", username))
+        await safe_edit(query, f"¿Kick a {username}?", reply_markup=confirm_menu("kick", username))
 
     elif data.startswith("ban:"):
         username = data.split(":", 1)[1]
-        await query.edit_message_text(f"¿Ban a {username}?", reply_markup=confirm_menu("ban", username))
+        await safe_edit(query, f"¿Ban a {username}?", reply_markup=confirm_menu("ban", username))
 
     elif data.startswith("unban:"):
         username = data.split(":", 1)[1]
-        await query.edit_message_text(f"¿Desbanear a {username}?", reply_markup=confirm_menu("unban", username))
+        await safe_edit(query, f"¿Desbanear a {username}?", reply_markup=confirm_menu("unban", username))
 
     elif data.startswith("role:"):
         username = data.split(":", 1)[1]
-        await query.edit_message_text(f"🛡 Cambiar rol de {username}", reply_markup=role_menu(username))
+        await safe_edit(query, f"🛡 Cambiar rol de {username}", reply_markup=role_menu(username))
 
     elif data.startswith("setrole:"):
         parts = data.split(":")
         username, role = parts[1], parts[2]
         try:
             add_user(username, "temp", role)
-            await query.edit_message_text(f"✅ Rol de {username} cambiado a {role}", reply_markup=player_detail_menu(username))
+            await safe_edit(query, f"✅ Rol de {username} cambiado a {role}", reply_markup=player_detail_menu(username))
         except Exception as e:
-            await query.edit_message_text(f"Error: {e}", reply_markup=player_detail_menu(username))
+            await safe_edit(query, f"Error: {e}", reply_markup=player_detail_menu(username))
 
     elif data.startswith("confirm:"):
         parts = data.split(":")
@@ -154,58 +162,58 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             if action == "kick":
                 kick_player(username)
-                await query.edit_message_text(f"✅ {username} kickeado", reply_markup=main_menu(online))
+                await safe_edit(query, f"✅ {username} kickeado", reply_markup=main_menu(online))
             elif action == "ban":
                 ban_player(username)
-                await query.edit_message_text(f"✅ {username} baneado", reply_markup=main_menu(online))
+                await safe_edit(query, f"✅ {username} baneado", reply_markup=main_menu(online))
             elif action == "unban":
                 unban_player(username)
-                await query.edit_message_text(f"✅ {username} desbaneado", reply_markup=main_menu(online))
+                await safe_edit(query, f"✅ {username} desbaneado", reply_markup=main_menu(online))
         except Exception as e:
-            await query.edit_message_text(f"Error: {e}", reply_markup=main_menu(online))
+            await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
 
     elif data == "save":
         if not online:
-            await query.edit_message_text("🔴 Servidor offline", reply_markup=main_menu(online))
+            await safe_edit(query, "🔴 Servidor offline", reply_markup=main_menu(online))
             return
         try:
             save_server()
-            await query.edit_message_text("💾 Partida guardada", reply_markup=main_menu(online))
+            await safe_edit(query, "💾 Partida guardada", reply_markup=main_menu(online))
         except Exception as e:
-            await query.edit_message_text(f"Error: {e}", reply_markup=main_menu(online))
+            await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
 
     elif data == "start":
         if online:
-            await query.edit_message_text("🟢 Ya está online", reply_markup=main_menu(online))
+            await safe_edit(query, "🟢 Ya está online", reply_markup=main_menu(online))
             return
         ok, msg = start_container()
-        await query.edit_message_text(f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(ok))
+        await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(ok))
 
     elif data == "stop":
         if not online:
-            await query.edit_message_text("🔴 Ya está offline", reply_markup=main_menu(online))
+            await safe_edit(query, "🔴 Ya está offline", reply_markup=main_menu(online))
             return
-        await query.edit_message_text("¿Apagar servidor?", reply_markup=confirm_menu("stop"))
+        await safe_edit(query, "¿Apagar servidor?", reply_markup=confirm_menu("stop"))
 
     elif data == "confirm:stop":
         ok, msg = stop_container()
-        await query.edit_message_text(f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(False))
+        await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(False))
 
     elif data == "restart":
         if not online:
-            await query.edit_message_text("🔴 Servidor offline", reply_markup=main_menu(online))
+            await safe_edit(query, "🔴 Servidor offline", reply_markup=main_menu(online))
             return
-        await query.edit_message_text("¿Reiniciar servidor?", reply_markup=confirm_menu("restart"))
+        await safe_edit(query, "¿Reiniciar servidor?", reply_markup=confirm_menu("restart"))
 
     elif data == "confirm:restart":
         ok, msg = restart_container()
-        await query.edit_message_text(f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(True))
+        await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(True))
 
     elif data == "admin":
-        await query.edit_message_text("🛠 ADMINISTRACIÓN", reply_markup=admin_menu())
+        await safe_edit(query, "🛠 ADMINISTRACIÓN", reply_markup=admin_menu())
 
     elif data == "console":
-        await query.edit_message_text("📜 Consola\n\n(Próximamente)", reply_markup=admin_menu())
+        await safe_edit(query, "📜 Consola\n\n(Próximamente)", reply_markup=admin_menu())
 
 def main():
     if not BOT_TOKEN:

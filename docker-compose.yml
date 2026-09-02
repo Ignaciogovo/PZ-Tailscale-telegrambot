@@ -14,7 +14,7 @@ services:
       TS_USERSPACE: "false"
       TS_ACCEPT_DNS: "false"
     volumes:
-      - /srv/data/project-zomboid/tailscale:/var/lib/tailscale
+      - ./data/project-zomboid/tailscale:/var/lib/tailscale
     devices:
       - /dev/net/tun:/dev/net/tun
     cap_add:
@@ -39,8 +39,8 @@ services:
     environment:
       TZ: Europe/Madrid
     volumes:
-      - /srv/data/project-zomboid/server-files:/project-zomboid
-      - /srv/data/project-zomboid/server-data:/project-zomboid-config
+      - ./data/project-zomboid/server-files:/project-zomboid
+      - .data/project-zomboid/server-data:/project-zomboid-config
     network_mode: "service:tailscale"
     mem_limit: 5g
     depends_on:
