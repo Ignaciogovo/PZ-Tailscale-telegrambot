@@ -22,10 +22,15 @@ docker_client = docker.from_env()
 
 async def safe_edit(query, text, reply_markup=None):
     try:
+        logger.info(f"Intentando editar mensaje: {text[:50]}...")
         await query.edit_message_text(text, reply_markup=reply_markup)
+        logger.info("Mensaje editado correctamente")
     except BadRequest as e:
         if "Message is not modified" not in str(e):
+            logger.error(f"Error al editar mensaje: {e}")
             raise
+        else:
+            logger.warning("Mensaje no modificado (ignorado)")
 
 def authorized(update: Update) -> bool:
     chat_id = update.effective_chat.id
@@ -45,48 +50,72 @@ async def get_pz_status() -> tuple[bool, str]:
         return False, f"error: {e}"
 
 async def start_container() -> tuple[bool, str]:
+    logger.info("Iniciando start_container()")
     try:
         container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
+        logger.info(f"Contenedor encontrado: {container.name}, estado: {container.status}")
         await asyncio.to_thread(container.start)
+        logger.info("Contenedor iniciado correctamente")
         return True, "Servidor arrancando..."
     except docker.errors.NotFound:
+        logger.error("Contenedor no encontrado")
         return False, "Contenedor no existe. Ejecuta: docker compose up -d projectzomboid"
     except Exception as e:
+        logger.error(f"Error al iniciar contenedor: {e}")
         return False, f"Error: {e}"
 
 async def stop_container() -> tuple[bool, str]:
+    logger.info("Iniciando stop_container()")
     try:
+        logger.info("Intentando guardar y cerrar servidor vía RCON...")
         await asyncio.to_thread(save_server)
+        logger.info("Servidor guardado vía RCON")
         await asyncio.to_thread(quit_server)
+        logger.info("Servidor cerrado vía RCON")
         return True, "Guardando y apagando..."
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"RCON falló, intentando Docker stop: {e}")
     try:
         container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
+        logger.info(f"Deteniendo contenedor {container.name} con timeout=30s")
         await asyncio.to_thread(container.stop, timeout=30)
+        logger.info("Contenedor detenido correctamente")
         return True, "Servidor apagado."
     except docker.errors.NotFound:
+        logger.error("Contenedor no encontrado")
         return False, "Contenedor no existe"
     except Exception as e:
+        logger.error(f"Error al detener contenedor: {e}")
         return False, f"Error: {e}"
 
 async def restart_container() -> tuple[bool, str]:
+    logger.info("Iniciando restart_container()")
     try:
+        logger.info("Intentando guardar y cerrar servidor vía RCON...")
         await asyncio.to_thread(save_server)
+        logger.info("Servidor guardado vía RCON")
         await asyncio.to_thread(quit_server)
+        logger.info("Servidor cerrado vía RCON")
+        logger.info("Esperando 5 segundos...")
         await asyncio.sleep(5)
         container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
+        logger.info(f"Iniciando contenedor {container.name}")
         await asyncio.to_thread(container.start)
+        logger.info("Contenedor reiniciado correctamente vía RCON + Docker start")
         return True, "Reiniciando..."
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"RCON falló, intentando Docker restart: {e}")
     try:
         container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
+        logger.info(f"Reiniciando contenedor {container.name} con timeout=30s")
         await asyncio.to_thread(container.restart, timeout=30)
+        logger.info("Contenedor reiniciado correctamente vía Docker restart")
         return True, "Reiniciando..."
     except docker.errors.NotFound:
+        logger.error("Contenedor no encontrado")
         return False, "Contenedor no existe"
     except Exception as e:
+        logger.error(f"Error al reiniciar contenedor: {e}")
         return False, f"Error: {e}"
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,10 +133,14 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     query = update.callback_query
-    await query.answer()
     data = query.data
+    logger.info(f"Callback recibido: {data}")
+    
+    await query.answer()
 
+    logger.info(f"Obteniendo estado PZ...")
     online, status = await get_pz_status()
+    logger.info(f"Estado PZ: online={online}, status={status}")
 
     if data == "main":
         if status == "not_found":
@@ -205,23 +238,33 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(ok))
 
     elif data == "stop":
+        logger.info("Handler stop ejecutado")
         if not online:
+            logger.info("Servidor offline, no se puede apagar")
             await safe_edit(query, "🔴 Ya está offline", reply_markup=main_menu(online))
             return
+        logger.info("Mostrando confirmación de apagado")
         await safe_edit(query, "¿Apagar servidor?", reply_markup=confirm_menu("stop"))
 
     elif data == "confirm:stop":
+        logger.info("Handler confirm:stop ejecutado")
         ok, msg = await stop_container()
+        logger.info(f"Resultado stop_container: ok={ok}, msg={msg}")
         await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(False))
 
     elif data == "restart":
+        logger.info("Handler restart ejecutado")
         if not online:
+            logger.info("Servidor offline, no se puede reiniciar")
             await safe_edit(query, "🔴 Servidor offline", reply_markup=main_menu(online))
             return
+        logger.info("Mostrando confirmación de reinicio")
         await safe_edit(query, "¿Reiniciar servidor?", reply_markup=confirm_menu("restart"))
 
     elif data == "confirm:restart":
+        logger.info("Handler confirm:restart ejecutado")
         ok, msg = await restart_container()
+        logger.info(f"Resultado restart_container: ok={ok}, msg={msg}")
         await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(True))
 
     elif data == "admin":

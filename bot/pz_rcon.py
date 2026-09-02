@@ -1,13 +1,23 @@
 import os
+import logging
 from rcon import Client
+
+logger = logging.getLogger(__name__)
 
 RCON_HOST = os.getenv("RCON_HOST", "127.0.0.1")
 RCON_PORT = int(os.getenv("RCON_PORT", "27015"))
 RCON_PASSWORD = os.getenv("RCON_PASSWORD", "")
 
 def rcon_call(command: str) -> str:
-    with Client(RCON_HOST, RCON_PORT, passwd=RCON_PASSWORD, timeout=10) as client:
-        return client.run(command)
+    logger.info(f"Ejecutando RCON: {command} en {RCON_HOST}:{RCON_PORT}")
+    try:
+        with Client(RCON_HOST, RCON_PORT, passwd=RCON_PASSWORD, timeout=10) as client:
+            result = client.run(command)
+            logger.info(f"RCON resultado: {result[:100] if result else 'None'}")
+            return result
+    except Exception as e:
+        logger.error(f"Error en RCON: {e}")
+        raise
 
 def get_players() -> list[dict]:
     response = rcon_call("players")
