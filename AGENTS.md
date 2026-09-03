@@ -69,6 +69,10 @@ Sin validación del usuario = sin merge, sin avanzar.
 ### Medidas de seguridad del bot de Telegram
 El bot gestiona el servidor de PZ desde Telegram, lo que implica riesgos de seguridad. Se implementaron las siguientes medidas para prevenir escape al host y ataques:
 
+**Problema original**: Montar el socket de Docker directamente en el bot da control total del host. Si el bot era comprometido (token robado, vulnerabilidad en python-telegram-bot), un atacante podía leer secrets de TODOS los contenedores del host (Jellyfin, Immich, etc.), ejecutar comandos en cualquiera, o escapar al host.
+
+**Solución**: Proxy personalizado (`proxy/`) que actúa como intermediario entre el bot y el socket de Docker. El bot envía peticiones HTTP al proxy, que filtra por nombre de contenedor y solo permite operaciones sobre `project-zomboid`. Cualquier intento de acceder a otro contenedor es bloqueado con HTTP 403 Forbidden.
+
 1. **Docker Socket Proxy personalizado**: El bot NO tiene acceso directo al socket de Docker. Usa un proxy personalizado (en `proxy/`) que filtra operaciones POR NOMBRE DE CONTENEDOR. Solo permite operaciones sobre `project-zomboid`. Bloquea acceso a cualquier otro contenedor del host (jellyfin, immich, etc.). Esto previene que un atacante con acceso al bot pueda leer secrets de otros contenedores o crear contenedores privilegiados.
 
 2. **Validación de contenedor**: Todas las operaciones de Docker están restringidas a `project-zomboid` mediante `ALLOWED_CONTAINER` en el proxy. Si alguien intenta acceder a otro contenedor, el proxy devuelve HTTP 403 Forbidden.
