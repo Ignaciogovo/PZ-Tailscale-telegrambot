@@ -5,13 +5,14 @@ Servidor dedicado de Project Zomboid B42 accesible desde cualquier lugar y gesti
 
 **Por qué**: Permite jugar con amigos sin depender de port-forwarding ni IPs estáticas (Tailscale), y administrar el servidor desde el móvil sin acceder a la consola del host (Telegram Bot).
 
-**Stack** (3 servicios Docker en `docker-compose.yml`, config vía `.env`):
+**Stack** (4 servicios Docker en `docker-compose.yml`, config vía `.env`):
 
 - **Project Zomboid** (B42): Servidor dedicado de juego. Imagen `indifferentbroccoli/projectzomboid-server-docker`. Datos en `./data/project-zomboid/`. Máx 8 jugadores, 2-5 GB RAM. Mods vía Steam Workshop.
 - **Tailscale**: Acceso externo a la red del servidor. Contenedor de red compartido (`network_mode: service:tailscale`). Autenticación vía `TAILSCALE_AUTHKEY`.
-- **Telegram Bot**: Administración remota (arrancar/apagar/reiniciar, gestionar jugadores). Bot Python en `bot/`. Comunica con PZ vía RCON (`127.0.0.1:27015`) y con Docker vía socket. Auth por `TELEGRAM_CHAT_ID`.
+- **Docker Socket Proxy**: Proxy personalizado en `proxy/` que filtra todas las operaciones de Docker. Solo permite operaciones sobre el contenedor `project-zomboid`. Bloquea acceso a cualquier otro contenedor del host.
+- **Telegram Bot**: Administración remota (arrancar/apagar/reiniciar, gestionar jugadores). Bot Python en `bot/`. Comunica con PZ vía RCON (`127.0.0.1:27015`) y con Docker vía proxy. Auth por `TELEGRAM_CHAT_ID`.
 
-Arquitectura de red: PZ y Bot comparten red con Tailscale → RCON accesible localmente.
+Arquitectura de red: PZ comparte red con Tailscale. Bot y proxy están en red interna aislada (`pz-internal`).
 
 - **Repositorio upstream**: `indifferentbroccoli/projectzomboid-server-docker` guardado en `pz-docker/` como referencia. Consultar para entender Dockerfile, scripts, variables de entorno. Actualizar cuando se quiera sincronizar con la imagen oficial.
 ---
@@ -68,13 +69,13 @@ Sin validación del usuario = sin merge, sin avanzar.
 ### Medidas de seguridad del bot de Telegram
 El bot gestiona el servidor de PZ desde Telegram, lo que implica riesgos de seguridad. Se implementaron las siguientes medidas para prevenir escape al host y ataques:
 
-1. **Docker Socket Proxy**: El bot NO tiene acceso directo al socket de Docker. Usa `tecnativa/docker-socket-proxy` que filtra operaciones permitidas (solo `containers` y `exec`). Esto previene que un atacante con acceso al bot pueda crear contenedores privilegiados o montar el filesystem del host.
+1. **Docker Socket Proxy personalizado**: El bot NO tiene acceso directo al socket de Docker. Usa un proxy personalizado (en `proxy/`) que filtra operaciones POR NOMBRE DE CONTENEDOR. Solo permite operaciones sobre `project-zomboid`. Bloquea acceso a cualquier otro contenedor del host (jellyfin, immich, etc.). Esto previene que un atacante con acceso al bot pueda leer secrets de otros contenedores o crear contenedores privilegiados.
 
-2. **Validación de contenedor**: Todas las operaciones de Docker están restringidas a `project-zomboid` mediante `ALLOWED_CONTAINERS`. Si alguien intenta cambiar `PZ_CONTAINER` a otro contenedor, será rechazado.
+2. **Validación de contenedor**: Todas las operaciones de Docker están restringidas a `project-zomboid` mediante `ALLOWED_CONTAINER` en el proxy. Si alguien intenta acceder a otro contenedor, el proxy devuelve HTTP 403 Forbidden.
 
 3. **Validación de inputs**: Usernames, Steam IDs y roles se validan con regex estrictos antes de ejecutar comandos RCON. Esto previene inyección de comandos (ej. `admin; quit`).
 
-4. **Correr como no-root**: El bot corre como usuario `botuser` (no-root). Si el contenedor es comprometido, el atacante no tiene privilegios de root dentro del contenedor, lo que reduce el impacto de un escape.
+4. **Correr como no-root**: El bot y el proxy corren como usuarios no-root (`botuser` y `proxyuser`). Si el contenedor es comprometido, el atacante no tiene privilegios de root dentro del contenedor, lo que reduce el impacto de un escape.
 
 5. **Red interna**: El bot y el proxy de Docker están en una red aislada (`pz-internal`), separada de la red de Tailscale. Esto limita el alcance de un posible compromiso.
 
