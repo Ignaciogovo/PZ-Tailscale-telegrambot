@@ -29,6 +29,10 @@ def is_allowed(path: str) -> tuple[bool, str]:
         return False, f"Bloqueado: {container}"
     return True, "General"
 
+def is_exec_start(path: str) -> bool:
+    """Detectar si es un endpoint de exec start (streaming)"""
+    return bool(re.match(r'/exec/[^/]+/start', path))
+
 class ProxyHandler(BaseHTTPRequestHandler):
     def handle_request(self):
         allowed, reason = is_allowed(self.path)
@@ -46,19 +50,42 @@ class ProxyHandler(BaseHTTPRequestHandler):
             content_length = int(self.headers.get('Content-Length', 0))
             body = self.rfile.read(content_length) if content_length > 0 else None
             
-            response = client.request(
-                method=self.command,
-                url=self.path,
-                headers={k: v for k, v in self.headers.items() if k.lower() != 'host'},
-                content=body
-            )
+            headers = {k: v for k, v in self.headers.items() if k.lower() != 'host'}
             
-            self.send_response(response.status_code)
-            for name, value in response.headers.items():
-                if name.lower() not in ['content-encoding', 'content-length', 'transfer-encoding', 'connection']:
-                    self.send_header(name, value)
-            self.end_headers()
-            self.wfile.write(response.content)
+            # Manejar streaming para exec start
+            if is_exec_start(self.path):
+                logger.info(f"Streaming exec start: {self.path}")
+                with client.stream(
+                    method=self.command,
+                    url=self.path,
+                    headers=headers,
+                    content=body
+                ) as response:
+                    self.send_response(response.status_code)
+                    for name, value in response.headers.items():
+                        if name.lower() not in ['content-encoding', 'content-length', 'transfer-encoding', 'connection']:
+                            self.send_header(name, value)
+                    self.end_headers()
+                    
+                    # Stream chunked response
+                    for chunk in response.iter_bytes():
+                        if chunk:
+                            self.wfile.write(chunk)
+            else:
+                # Respuesta normal
+                response = client.request(
+                    method=self.command,
+                    url=self.path,
+                    headers=headers,
+                    content=body
+                )
+                
+                self.send_response(response.status_code)
+                for name, value in response.headers.items():
+                    if name.lower() not in ['content-encoding', 'content-length', 'transfer-encoding', 'connection']:
+                        self.send_header(name, value)
+                self.end_headers()
+                self.wfile.write(response.content)
         except Exception as e:
             logger.error(f"Error: {e}")
             self.send_response(502)
