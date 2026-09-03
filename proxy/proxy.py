@@ -2,7 +2,7 @@ import os
 import re
 import logging
 from flask import Flask, request, Response
-import requests_unixsocket
+import httpx
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -10,10 +10,11 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 
 ALLOWED_CONTAINER = os.getenv("ALLOWED_CONTAINER", "project-zomboid")
-DOCKER_SOCKET = "http+unix:///var/run/docker.sock"
 PROXY_PORT = int(os.getenv("PROXY_PORT", "2375"))
 
-session = requests_unixsocket.Session()
+# Crear cliente httpx con socket Unix
+transport = httpx.HTTPTransport(uds="/var/run/docker.sock")
+client = httpx.Client(transport=transport, base_url="http://localhost", timeout=30.0)
 
 def extract_container_name(path: str) -> str | None:
     """Extraer nombre de contenedor de la URL de Docker API"""
@@ -74,22 +75,18 @@ def proxy(path):
     
     # Reenviar petición al socket de Docker
     try:
-        # Formato correcto para requests-unixsocket: el path del socket debe estar URL-encoded
-        socket_path_encoded = "%2Fvar%2Frun%2Fdocker.sock"
-        url = f"http+unix://{socket_path_encoded}/{path}"
-        
-        response = session.request(
+        # httpx con HTTPTransport(uds=...) maneja el socket Unix automáticamente
+        response = client.request(
             method=request.method,
-            url=url,
+            url=f"/{path}",
             headers={k: v for k, v in request.headers if k.lower() != 'host'},
-            data=request.get_data(),
-            params=request.args,
-            timeout=30
+            content=request.get_data(),
+            params=request.args
         )
         
-        # Crear respuesta
+        # Crear respuesta Flask desde respuesta httpx
         excluded_headers = ['content-encoding', 'content-length', 'transfer-encoding', 'connection']
-        headers = [(name, value) for (name, value) in response.raw.headers.items()
+        headers = [(name, value) for name, value in response.headers.items()
                    if name.lower() not in excluded_headers]
         
         return Response(response.content, response.status_code, headers)

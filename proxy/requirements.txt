@@ -1,2 +1,2 @@
 flask==3.0.0
-requests-unixsocket==0.3.0
+httpx==0.27.0
