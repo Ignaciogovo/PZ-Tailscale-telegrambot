@@ -1,9 +1,0 @@
-Players connected (1): 
--usuario1
-Username: [admin], SteamID: None
-Username: [usuario1], SteamID: 76561198840364973
-Username: [usuario2], SteamID: 76561198840364973
-Raw output:
-''
-
-Parsed:
