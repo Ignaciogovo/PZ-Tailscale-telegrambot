@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-from pz_rcon import get_players, get_players_fast, get_all_users, get_banned_steamids, get_user_info, set_role, remove_user, save_server, quit_server, kick_player, ban_player, unban_player, add_user, get_container_status, start_container as pz_start, stop_container as pz_stop, restart_container as pz_restart, validate_username, validate_steam_id, validate_role
+from pz_rcon import get_players_fast, get_all_users, get_banned_steamids, get_user_info, set_role, remove_user, save_server, quit_server, kick_player, ban_player, unban_player, add_user, get_container_status, start_container as pz_start, stop_container as pz_stop, restart_container as pz_restart, validate_username, validate_steam_id, validate_role
 from keyboards import main_menu, players_menu, player_detail_menu, admin_menu, role_menu, confirm_menu
 
 logging.basicConfig(level=logging.INFO)
@@ -25,12 +25,6 @@ async def safe_edit(query, text, reply_markup=None):
 
 def authorized(update: Update) -> bool:
     return update.effective_chat.id in ALLOWED_CHAT_IDS
-
-async def get_pz_status() -> tuple[bool, str]:
-    return await asyncio.to_thread(get_container_status)
-
-async def start_container() -> tuple[bool, str]:
-    return await asyncio.to_thread(pz_start)
 
 async def stop_container() -> tuple[bool, str]:
     logger.info("Iniciando stop_container()")
@@ -64,7 +58,7 @@ async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not authorized(update):
         await update.message.reply_text("⛔ No autorizado.")
         return
-    online, status = await get_pz_status()
+    online, status = await asyncio.to_thread(get_container_status)
     if status == "starting":
         text = "🔄 REINICIANDO..."
     elif status == "unhealthy":
@@ -86,7 +80,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
 
     logger.info(f"Obteniendo estado PZ...")
-    online, status = await get_pz_status()
+    online, status = await asyncio.to_thread(get_container_status)
     logger.info(f"Estado PZ: online={online}, status={status}")
 
     if data == "main":
@@ -235,7 +229,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if online:
             await safe_edit(query, "🟢 Ya está online", reply_markup=main_menu(online))
             return
-        ok, msg = await start_container()
+        ok, msg = await asyncio.to_thread(pz_start)
         if not ok and "no existe" in msg:
             await safe_edit(query, f"❌ {msg}", reply_markup=main_menu(False))
         else:

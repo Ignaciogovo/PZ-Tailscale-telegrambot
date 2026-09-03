@@ -93,11 +93,6 @@ def rcon_call(command: str) -> str:
     logger.error("RCON agotado tras 2 intentos")
     raise last_error
 
-def get_players() -> list[dict]:
-    """Obtener jugadores conectados (con retry si falla)"""
-    response = rcon_call("players")
-    return _parse_players(response)
-
 def get_players_fast() -> list[dict]:
     """Obtener jugadores conectados con timeout corto (5s)"""
     # Intentar docker exec primero
@@ -248,6 +243,18 @@ def _docker_command(args: list[str], timeout: int = 10) -> tuple[bool, str]:
         logger.error(f"docker falló: {e}")
         return False, str(e)
 
+def _docker_container_action(action: str, args: list[str], success_msg: str, timeout: int = 10) -> tuple[bool, str]:
+    """Ejecutar acción de docker sobre el contenedor con manejo de errores estandarizado"""
+    logger.info(f"{action} contenedor {PZ_CONTAINER}")
+    ok, output = _docker_command(args, timeout=timeout)
+    if ok:
+        logger.info(f"Contenedor {action.lower()} correctamente")
+        return True, success_msg
+    logger.error(f"Error al {action.lower()} contenedor: {output}")
+    if "No such" in output:
+        return False, "Contenedor no existe" if action != "Iniciando" else "Contenedor no existe. Ejecuta: docker compose up -d projectzomboid"
+    return False, f"Error: {output}"
+
 def get_container_status() -> tuple[bool, str]:
     """Obtener estado del contenedor (status y health)"""
     ok, output = _docker_command([
@@ -272,40 +279,10 @@ def get_container_status() -> tuple[bool, str]:
     return True, health
 
 def start_container() -> tuple[bool, str]:
-    """Iniciar el contenedor"""
-    logger.info(f"Iniciando contenedor {PZ_CONTAINER}")
-    ok, output = _docker_command(["start", PZ_CONTAINER])
-    if ok:
-        logger.info("Contenedor iniciado correctamente")
-        return True, "Servidor arrancando..."
-    else:
-        logger.error(f"Error al iniciar contenedor: {output}")
-        if "No such" in output:
-            return False, "Contenedor no existe. Ejecuta: docker compose up -d projectzomboid"
-        return False, f"Error: {output}"
+    return _docker_container_action("Iniciando", ["start", PZ_CONTAINER], "Servidor arrancando...")
 
 def stop_container() -> tuple[bool, str]:
-    """Detener el contenedor"""
-    logger.info(f"Deteniendo contenedor {PZ_CONTAINER}")
-    ok, output = _docker_command(["stop", "-t", "30", PZ_CONTAINER], timeout=60)
-    if ok:
-        logger.info("Contenedor detenido correctamente")
-        return True, "Servidor apagado."
-    else:
-        logger.error(f"Error al detener contenedor: {output}")
-        if "No such" in output:
-            return False, "Contenedor no existe"
-        return False, f"Error: {output}"
+    return _docker_container_action("Deteniendo", ["stop", "-t", "30", PZ_CONTAINER], "Servidor apagado.", timeout=60)
 
 def restart_container() -> tuple[bool, str]:
-    """Reiniciar el contenedor"""
-    logger.info(f"Reiniciando contenedor {PZ_CONTAINER}")
-    ok, output = _docker_command(["restart", "-t", "30", PZ_CONTAINER], timeout=60)
-    if ok:
-        logger.info("Contenedor reiniciado correctamente")
-        return True, "Reiniciando..."
-    else:
-        logger.error(f"Error al reiniciar contenedor: {output}")
-        if "No such" in output:
-            return False, "Contenedor no existe"
-        return False, f"Error: {output}"
+    return _docker_container_action("Reiniciando", ["restart", "-t", "30", PZ_CONTAINER], "Reiniciando...", timeout=60)
