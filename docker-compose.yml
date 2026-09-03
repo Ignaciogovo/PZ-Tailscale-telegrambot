@@ -22,8 +22,6 @@ services:
       - NET_RAW
     security_opt:
       - no-new-privileges:true
-    networks:
-      - project-zomboid
 
   # ==========================================================
   # PROJECT ZOMBOID
@@ -57,11 +55,12 @@ services:
     env_file:
       - .env
     environment:
-      RCON_HOST: 127.0.0.1
+      RCON_HOST: projectzomboid
       RCON_PORT: ${RCON_PORT:-27015}
       PZ_CONTAINER: project-zomboid
+      PZ_DB_PATH: /pz-data/db/server-zomboid.db
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-    network_mode: "service:tailscale"
+      - ./data/project-zomboid/server-data:/pz-data:ro
     depends_on:
-      - tailscale
+      - projectzomboid

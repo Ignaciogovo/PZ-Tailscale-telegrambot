@@ -7,7 +7,7 @@ from telegram.ext import Application, CommandHandler, CallbackQueryHandler, Cont
 
 import docker
 import docker.errors
-from pz_rcon import get_players, save_server, quit_server, kick_player, ban_player, unban_player, add_user
+from pz_rcon import get_players, get_players_fast, get_all_users, get_banned_steamids, get_user_info, set_role, remove_user, save_server, quit_server, kick_player, ban_player, unban_player, add_user
 from keyboards import main_menu, players_menu, player_detail_menu, admin_menu, role_menu, confirm_menu
 
 logging.basicConfig(level=logging.INFO)
@@ -176,21 +176,60 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await safe_edit(query, "🔴 Servidor offline", reply_markup=main_menu(online))
             return
         try:
-            players = get_players()
-            if not players:
-                text = "👥 JUGADORES\n\nNadie conectado"
+            all_users = get_all_users()
+            connected = get_players_fast()
+            connected_names = {p["name"] for p in connected}
+            banned_ids = get_banned_steamids()
+            
+            if not all_users:
+                text = "👥 USUARIOS\n\nNo hay usuarios registrados"
             else:
-                text = f"👥 JUGADORES ({len(players)}/{MAX_PLAYERS})\n\n"
-                for p in players:
-                    text += f"🟢 {p['name']}\n   Steam: {p['steam_id']}\n   Estado: ONLINE\n\n"
-            await safe_edit(query, text, reply_markup=players_menu(players))
+                text = f"👥 USUARIOS ({len(all_users)})\n\n"
+                if not connected:
+                    text += "⚠️ No se pudo verificar estado de conexión\n\n"
+                for u in all_users:
+                    is_connected = u["username"] in connected_names
+                    is_banned = u["steamid"] in banned_ids
+                    
+                    status = "🟢" if is_connected else "⚫"
+                    role_badge = f" [{u['role']}]"
+                    ban_badge = " 🚫" if is_banned else ""
+                    
+                    text += f"{status} {u['username']}{role_badge}{ban_badge}\n"
+                    text += f"   Steam: {u['steamid']}\n"
+                    text += f"   Última conexión: {u['last_connection']}\n\n"
+            
+            await safe_edit(query, text, reply_markup=players_menu(all_users, connected_names, banned_ids))
         except Exception as e:
             await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
 
     elif data.startswith("player:"):
         username = data.split(":", 1)[1]
-        text = f"👤 {username.upper()}\n\nEstado: 🟢 ONLINE\nRol: user"
-        await safe_edit(query, text, reply_markup=player_detail_menu(username))
+        try:
+            user_info = get_user_info(username)
+            if not user_info:
+                await safe_edit(query, f"❌ Usuario {username} no encontrado", reply_markup=main_menu(online))
+                return
+            
+            connected = get_players_fast()
+            connected_names = {p["name"] for p in connected}
+            banned_ids = get_banned_steamids()
+            
+            is_connected = username in connected_names
+            is_banned = user_info["steamid"] in banned_ids
+            
+            status = "🟢 ONLINE" if is_connected else "⚫ OFFLINE"
+            ban_status = " 🚫 BANEADO" if is_banned else ""
+            
+            text = f"👤 {username.upper()}\n\n"
+            text += f"Estado: {status}{ban_status}\n"
+            text += f"Rol: {user_info['role']}\n"
+            text += f"Steam: {user_info['steamid']}\n"
+            text += f"Última conexión: {user_info['last_connection']}"
+            
+            await safe_edit(query, text, reply_markup=player_detail_menu(username, user_info["steamid"], is_banned))
+        except Exception as e:
+            await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
 
     elif data.startswith("kick:"):
         username = data.split(":", 1)[1]
@@ -212,10 +251,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = data.split(":")
         username, role = parts[1], parts[2]
         try:
-            add_user(username, "temp", role)
-            await safe_edit(query, f"✅ Rol de {username} cambiado a {role}", reply_markup=player_detail_menu(username))
+            set_role(username, role)
+            user_info = get_user_info(username)
+            banned_ids = get_banned_steamids()
+            is_banned = user_info["steamid"] in banned_ids if user_info else False
+            await safe_edit(query, f"✅ Rol de {username} cambiado a {role}", reply_markup=player_detail_menu(username, user_info["steamid"] if user_info else "", is_banned))
         except Exception as e:
-            await safe_edit(query, f"Error: {e}", reply_markup=player_detail_menu(username))
+            await safe_edit(query, f"Error: {e}", reply_markup=player_detail_menu(username, "", False))
 
     elif data == "save":
         if not online:
@@ -275,11 +317,22 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 kick_player(username)
                 await safe_edit(query, f"✅ {username} kickeado", reply_markup=main_menu(online))
             elif action == "ban":
-                ban_player(username)
-                await safe_edit(query, f"✅ {username} baneado", reply_markup=main_menu(online))
+                user_info = get_user_info(username)
+                if user_info and user_info["steamid"] != "unknown":
+                    ban_player(user_info["steamid"])
+                    await safe_edit(query, f"✅ {username} baneado (Steam: {user_info['steamid']})", reply_markup=main_menu(online))
+                else:
+                    await safe_edit(query, f"❌ No se pudo obtener SteamID de {username}", reply_markup=main_menu(online))
             elif action == "unban":
-                unban_player(username)
-                await safe_edit(query, f"✅ {username} desbaneado", reply_markup=main_menu(online))
+                user_info = get_user_info(username)
+                if user_info and user_info["steamid"] != "unknown":
+                    unban_player(user_info["steamid"])
+                    await safe_edit(query, f"✅ {username} desbaneado (Steam: {user_info['steamid']})", reply_markup=main_menu(online))
+                else:
+                    await safe_edit(query, f"❌ No se pudo obtener SteamID de {username}", reply_markup=main_menu(online))
+            elif action == "remove":
+                remove_user(username)
+                await safe_edit(query, f"✅ {username} eliminado de la whitelist", reply_markup=main_menu(online))
         except Exception as e:
             await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
 

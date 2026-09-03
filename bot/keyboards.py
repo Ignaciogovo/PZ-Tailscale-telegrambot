@@ -12,21 +12,34 @@ def main_menu(online: bool) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(buttons)
 
-def players_menu(players: list[dict]) -> InlineKeyboardMarkup:
+def players_menu(users: list[dict], connected_names: set, banned_ids: set) -> InlineKeyboardMarkup:
     buttons = []
-    for p in players:
-        buttons.append([InlineKeyboardButton(f"🟢 {p['name']}", callback_data=f"player:{p['name']}")])
+    for u in users:
+        is_connected = u["username"] in connected_names
+        is_banned = u["steamid"] in banned_ids
+        
+        status = "🟢" if is_connected else "⚫"
+        role_badge = f" [{u['role']}]"
+        ban_badge = " 🚫" if is_banned else ""
+        
+        label = f"{status} {u['username']}{role_badge}{ban_badge}"
+        buttons.append([InlineKeyboardButton(label, callback_data=f"player:{u['username']}")])
     buttons.append([InlineKeyboardButton("◀️ Volver", callback_data="main")])
     return InlineKeyboardMarkup(buttons)
 
-def player_detail_menu(username: str) -> InlineKeyboardMarkup:
+def player_detail_menu(username: str, steamid: str = "", is_banned: bool = False) -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton("👢 Kick", callback_data=f"kick:{username}")],
-        [InlineKeyboardButton("🚫 Ban", callback_data=f"ban:{username}")],
-        [InlineKeyboardButton("🔓 Desbanear", callback_data=f"unban:{username}")],
-        [InlineKeyboardButton("🛡 Cambiar rol", callback_data=f"role:{username}")],
-        [InlineKeyboardButton("◀️ Volver", callback_data="players")],
     ]
+    if is_banned:
+        buttons.append([InlineKeyboardButton("🔓 Desbanear", callback_data=f"confirm:unban:{username}")])
+    else:
+        buttons.append([InlineKeyboardButton("🚫 Ban", callback_data=f"ban:{username}")])
+    buttons.extend([
+        [InlineKeyboardButton("🛡 Cambiar rol", callback_data=f"role:{username}")],
+        [InlineKeyboardButton("🗑 Eliminar usuario", callback_data=f"confirm:remove:{username}")],
+        [InlineKeyboardButton("◀️ Volver", callback_data="players")],
+    ])
     return InlineKeyboardMarkup(buttons)
 
 def admin_menu() -> InlineKeyboardMarkup:
