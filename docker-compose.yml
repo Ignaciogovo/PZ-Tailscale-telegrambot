@@ -45,6 +45,23 @@ services:
       - tailscale
 
   # ==========================================================
+  # DOCKER SOCKET PROXY
+  # ==========================================================
+
+  docker-socket-proxy:
+    image: tecnativa/docker-socket-proxy
+    container_name: pz-docker-proxy
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      CONTAINERS: 1
+      EXEC: 1
+      POST: 1
+    networks:
+      - pz-internal
+
+  # ==========================================================
   # TELEGRAM BOT
   # ==========================================================
 
@@ -59,8 +76,15 @@ services:
       RCON_PORT: ${RCON_PORT:-27015}
       PZ_CONTAINER: project-zomboid
       PZ_DB_PATH: /pz-data/db/server-zomboid.db
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./data/project-zomboid/server-data:/pz-data:ro
     depends_on:
       - projectzomboid
+      - docker-socket-proxy
+    networks:
+      - pz-internal
+
+networks:
+  pz-internal:
+    driver: bridge

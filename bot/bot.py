@@ -5,9 +5,7 @@ from telegram import Update
 from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-import docker
-import docker.errors
-from pz_rcon import get_players, get_players_fast, get_all_users, get_banned_steamids, get_user_info, set_role, remove_user, save_server, quit_server, kick_player, ban_player, unban_player, add_user
+from pz_rcon import get_players, get_players_fast, get_all_users, get_banned_steamids, get_user_info, set_role, remove_user, save_server, quit_server, kick_player, ban_player, unban_player, add_user, get_container_status, start_container as pz_start, stop_container as pz_stop, restart_container as pz_restart, validate_username, validate_steam_id, validate_role
 from keyboards import main_menu, players_menu, player_detail_menu, admin_menu, role_menu, confirm_menu
 
 logging.basicConfig(level=logging.INFO)
@@ -17,8 +15,6 @@ BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ALLOWED_CHAT_IDS = [int(x) for x in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if x.strip()]
 PZ_CONTAINER = os.getenv("PZ_CONTAINER", "project-zomboid")
 MAX_PLAYERS = int(os.getenv("MAX_PLAYERS", "8"))
-
-docker_client = docker.from_env()
 
 async def safe_edit(query, text, reply_markup=None):
     try:
@@ -31,36 +27,10 @@ def authorized(update: Update) -> bool:
     return update.effective_chat.id in ALLOWED_CHAT_IDS
 
 async def get_pz_status() -> tuple[bool, str]:
-    try:
-        container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
-        container.reload()
-        status = container.status
-        health = container.health
-        logger.info(f"Container status={status}, health={health}")
-        if status != "running":
-            return False, status
-        if health in ("starting", "unhealthy"):
-            return False, health
-        return True, health
-    except docker.errors.NotFound:
-        return False, "not_found"
-    except Exception as e:
-        return False, f"error: {e}"
+    return await asyncio.to_thread(get_container_status)
 
 async def start_container() -> tuple[bool, str]:
-    logger.info("Iniciando start_container()")
-    try:
-        container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
-        logger.info(f"Contenedor encontrado: {container.name}, estado: {container.status}")
-        await asyncio.to_thread(container.start)
-        logger.info("Contenedor iniciado correctamente")
-        return True, "Servidor arrancando..."
-    except docker.errors.NotFound:
-        logger.error("Contenedor no encontrado")
-        return False, "Contenedor no existe. Ejecuta: docker compose up -d projectzomboid"
-    except Exception as e:
-        logger.error(f"Error al iniciar contenedor: {e}")
-        return False, f"Error: {e}"
+    return await asyncio.to_thread(pz_start)
 
 async def stop_container() -> tuple[bool, str]:
     logger.info("Iniciando stop_container()")
@@ -73,18 +43,7 @@ async def stop_container() -> tuple[bool, str]:
         return True, "Guardando y apagando..."
     except Exception as e:
         logger.warning(f"RCON falló, intentando Docker stop: {e}")
-    try:
-        container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
-        logger.info(f"Deteniendo contenedor {container.name} con timeout=30s")
-        await asyncio.to_thread(container.stop, timeout=30)
-        logger.info("Contenedor detenido correctamente")
-        return True, "Servidor apagado."
-    except docker.errors.NotFound:
-        logger.error("Contenedor no encontrado")
-        return False, "Contenedor no existe"
-    except Exception as e:
-        logger.error(f"Error al detener contenedor: {e}")
-        return False, f"Error: {e}"
+    return await asyncio.to_thread(pz_stop)
 
 async def restart_container() -> tuple[bool, str]:
     logger.info("Iniciando restart_container()")
@@ -96,25 +55,10 @@ async def restart_container() -> tuple[bool, str]:
         logger.info("Servidor cerrado vía RCON")
         logger.info("Esperando 5 segundos...")
         await asyncio.sleep(5)
-        container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
-        logger.info(f"Iniciando contenedor {container.name}")
-        await asyncio.to_thread(container.start)
-        logger.info("Contenedor reiniciado correctamente vía RCON + Docker start")
-        return True, "Reiniciando..."
+        return await asyncio.to_thread(pz_start)
     except Exception as e:
         logger.warning(f"RCON falló, intentando Docker restart: {e}")
-    try:
-        container = await asyncio.to_thread(docker_client.containers.get, PZ_CONTAINER)
-        logger.info(f"Reiniciando contenedor {container.name} con timeout=30s")
-        await asyncio.to_thread(container.restart, timeout=30)
-        logger.info("Contenedor reiniciado correctamente vía Docker restart")
-        return True, "Reiniciando..."
-    except docker.errors.NotFound:
-        logger.error("Contenedor no encontrado")
-        return False, "Contenedor no existe"
-    except Exception as e:
-        logger.error(f"Error al reiniciar contenedor: {e}")
-        return False, f"Error: {e}"
+    return await asyncio.to_thread(pz_restart)
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not authorized(update):
@@ -233,23 +177,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data.startswith("kick:"):
         username = data.split(":", 1)[1]
+        if not validate_username(username):
+            await safe_edit(query, f"❌ Username inválido: {username}", reply_markup=main_menu(online))
+            return
         await safe_edit(query, f"¿Kick a {username}?", reply_markup=confirm_menu("kick", username))
 
     elif data.startswith("ban:"):
         username = data.split(":", 1)[1]
+        if not validate_username(username):
+            await safe_edit(query, f"❌ Username inválido: {username}", reply_markup=main_menu(online))
+            return
         await safe_edit(query, f"¿Ban a {username}?", reply_markup=confirm_menu("ban", username))
 
     elif data.startswith("unban:"):
         username = data.split(":", 1)[1]
+        if not validate_username(username):
+            await safe_edit(query, f"❌ Username inválido: {username}", reply_markup=main_menu(online))
+            return
         await safe_edit(query, f"¿Desbanear a {username}?", reply_markup=confirm_menu("unban", username))
 
     elif data.startswith("role:"):
         username = data.split(":", 1)[1]
+        if not validate_username(username):
+            await safe_edit(query, f"❌ Username inválido: {username}", reply_markup=main_menu(online))
+            return
         await safe_edit(query, f"🛡 Cambiar rol de {username}", reply_markup=role_menu(username))
 
     elif data.startswith("setrole:"):
         parts = data.split(":")
         username, role = parts[1], parts[2]
+        if not validate_username(username):
+            await safe_edit(query, f"❌ Username inválido: {username}", reply_markup=main_menu(online))
+            return
+        if not validate_role(role):
+            await safe_edit(query, f"❌ Rol inválido: {role}", reply_markup=main_menu(online))
+            return
         try:
             set_role(username, role)
             user_info = get_user_info(username)
@@ -312,6 +274,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif data.startswith("confirm:"):
         parts = data.split(":")
         action, username = parts[1], parts[2] if len(parts) > 2 else ""
+        if username and not validate_username(username):
+            await safe_edit(query, f"❌ Username inválido: {username}", reply_markup=main_menu(online))
+            return
         try:
             if action == "kick":
                 kick_player(username)
@@ -319,6 +284,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif action == "ban":
                 user_info = get_user_info(username)
                 if user_info and user_info["steamid"] != "unknown":
+                    if not validate_steam_id(user_info["steamid"]):
+                        await safe_edit(query, f"❌ Steam ID inválido para {username}", reply_markup=main_menu(online))
+                        return
                     ban_player(user_info["steamid"])
                     await safe_edit(query, f"✅ {username} baneado (Steam: {user_info['steamid']})", reply_markup=main_menu(online))
                 else:
@@ -326,6 +294,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             elif action == "unban":
                 user_info = get_user_info(username)
                 if user_info and user_info["steamid"] != "unknown":
+                    if not validate_steam_id(user_info["steamid"]):
+                        await safe_edit(query, f"❌ Steam ID inválido para {username}", reply_markup=main_menu(online))
+                        return
                     unban_player(user_info["steamid"])
                     await safe_edit(query, f"✅ {username} desbaneado (Steam: {user_info['steamid']})", reply_markup=main_menu(online))
                 else:

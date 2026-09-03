@@ -65,6 +65,21 @@ Sin validación del usuario = sin merge, sin avanzar.
 - Antes de instalar una dependencia nueva, verificar que sea necesaria y de fuente confiable.
 - No ejecutar `git push --force` sobre ramas compartidas (`master`/`develop`) sin confirmación explícita.
 
+### Medidas de seguridad del bot de Telegram
+El bot gestiona el servidor de PZ desde Telegram, lo que implica riesgos de seguridad. Se implementaron las siguientes medidas para prevenir escape al host y ataques:
+
+1. **Docker Socket Proxy**: El bot NO tiene acceso directo al socket de Docker. Usa `tecnativa/docker-socket-proxy` que filtra operaciones permitidas (solo `containers` y `exec`). Esto previene que un atacante con acceso al bot pueda crear contenedores privilegiados o montar el filesystem del host.
+
+2. **Validación de contenedor**: Todas las operaciones de Docker están restringidas a `project-zomboid` mediante `ALLOWED_CONTAINERS`. Si alguien intenta cambiar `PZ_CONTAINER` a otro contenedor, será rechazado.
+
+3. **Validación de inputs**: Usernames, Steam IDs y roles se validan con regex estrictos antes de ejecutar comandos RCON. Esto previene inyección de comandos (ej. `admin; quit`).
+
+4. **Correr como no-root**: El bot corre como usuario `botuser` (no-root). Si el contenedor es comprometido, el atacante no tiene privilegios de root dentro del contenedor, lo que reduce el impacto de un escape.
+
+5. **Red interna**: El bot y el proxy de Docker están en una red aislada (`pz-internal`), separada de la red de Tailscale. Esto limita el alcance de un posible compromiso.
+
+**Por qué estas medidas**: Telegram es un punto de entrada público. Si el chat autorizado es comprometido (token robado, sesión hackeada), el atacante tendría control del bot. Estas medidas aseguran que incluso en ese caso, el atacante solo puede controlar el contenedor de PZ, no el host ni otros contenedores.
+
 ## 4. Uso de herramientas
 - Usar **codebase-memory-mcp** para preguntas estructurales (dónde se llama X, impacto de cambiar Y)
   en vez de grep/leer archivo por archivo cuando el proyecto ya esté indexado.

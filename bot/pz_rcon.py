@@ -3,6 +3,7 @@ import logging
 import time
 import sqlite3
 import subprocess
+import re
 from rcon import Client
 
 logger = logging.getLogger(__name__)
@@ -16,6 +17,25 @@ RCON_CONFIG = "/home/steam/server/rcon.yml"
 
 # Contenedores permitidos para docker exec
 ALLOWED_CONTAINERS = ["project-zomboid"]
+
+# Roles válidos
+VALID_ROLES = {"admin", "moderator", "user", "observer", "gm"}
+
+def validate_username(username: str) -> bool:
+    """Validar username: solo letras, números, guiones bajos, guiones. Máx 32 chars."""
+    if not username or len(username) > 32:
+        return False
+    return bool(re.match(r'^[a-zA-Z0-9_-]+$', username))
+
+def validate_steam_id(steam_id: str) -> bool:
+    """Validar Steam ID: solo 17 dígitos."""
+    if not steam_id or len(steam_id) != 17:
+        return False
+    return bool(re.match(r'^\d{17}$', steam_id))
+
+def validate_role(role: str) -> bool:
+    """Validar rol: lista blanca de roles."""
+    return role in VALID_ROLES
 
 def rcon_exec(command: str) -> str | None:
     """Ejecutar comando RCON vía docker exec + rcon-cli"""
@@ -168,9 +188,15 @@ def get_user_info(username: str) -> dict | None:
         conn.close()
 
 def set_role(username: str, role: str) -> str:
+    if not validate_username(username):
+        raise ValueError(f"Username inválido: {username}")
+    if not validate_role(role):
+        raise ValueError(f"Rol inválido: {role}")
     return rcon_call(f"setaccesslevel {username} {role}")
 
 def remove_user(username: str) -> str:
+    if not validate_username(username):
+        raise ValueError(f"Username inválido: {username}")
     return rcon_call(f"removeuserfromwhitelist {username}")
 
 def save_server() -> str:
@@ -180,13 +206,106 @@ def quit_server() -> str:
     return rcon_call("quit")
 
 def kick_player(username: str) -> str:
+    if not validate_username(username):
+        raise ValueError(f"Username inválido: {username}")
     return rcon_call(f"kickuser {username}")
 
 def ban_player(steam_id: str) -> str:
+    if not validate_steam_id(steam_id):
+        raise ValueError(f"Steam ID inválido: {steam_id}")
     return rcon_call(f"banid {steam_id}")
 
 def unban_player(steam_id: str) -> str:
+    if not validate_steam_id(steam_id):
+        raise ValueError(f"Steam ID inválido: {steam_id}")
     return rcon_call(f"unbanid {steam_id}")
 
 def add_user(username: str, password: str) -> str:
+    if not validate_username(username):
+        raise ValueError(f"Username inválido: {username}")
     return rcon_call(f"adduser {username} {password}")
+
+def _docker_command(args: list[str], timeout: int = 10) -> tuple[bool, str]:
+    """Ejecutar comando docker con validación de contenedor"""
+    if PZ_CONTAINER not in ALLOWED_CONTAINERS:
+        logger.error(f"Contenedor {PZ_CONTAINER} no está en la lista de permitidos")
+        return False, "Contenedor no permitido"
+    try:
+        result = subprocess.run(
+            ["docker"] + args,
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        if result.returncode == 0:
+            return True, result.stdout.strip()
+        else:
+            return False, result.stderr.strip()
+    except subprocess.TimeoutExpired:
+        logger.warning(f"docker timeout para: {args}")
+        return False, "Timeout"
+    except Exception as e:
+        logger.error(f"docker falló: {e}")
+        return False, str(e)
+
+def get_container_status() -> tuple[bool, str]:
+    """Obtener estado del contenedor (status y health)"""
+    ok, output = _docker_command([
+        "inspect",
+        "--format",
+        "{{.State.Status}} {{.State.Health.Status}}",
+        PZ_CONTAINER
+    ])
+    if not ok:
+        return False, "not_found" if "No such" in output else f"error: {output}"
+    
+    parts = output.split()
+    status = parts[0] if len(parts) > 0 else "unknown"
+    health = parts[1] if len(parts) > 1 else "none"
+    
+    logger.info(f"Container status={status}, health={health}")
+    
+    if status != "running":
+        return False, status
+    if health in ("starting", "unhealthy"):
+        return False, health
+    return True, health
+
+def start_container() -> tuple[bool, str]:
+    """Iniciar el contenedor"""
+    logger.info(f"Iniciando contenedor {PZ_CONTAINER}")
+    ok, output = _docker_command(["start", PZ_CONTAINER])
+    if ok:
+        logger.info("Contenedor iniciado correctamente")
+        return True, "Servidor arrancando..."
+    else:
+        logger.error(f"Error al iniciar contenedor: {output}")
+        if "No such" in output:
+            return False, "Contenedor no existe. Ejecuta: docker compose up -d projectzomboid"
+        return False, f"Error: {output}"
+
+def stop_container() -> tuple[bool, str]:
+    """Detener el contenedor"""
+    logger.info(f"Deteniendo contenedor {PZ_CONTAINER}")
+    ok, output = _docker_command(["stop", "-t", "30", PZ_CONTAINER], timeout=60)
+    if ok:
+        logger.info("Contenedor detenido correctamente")
+        return True, "Servidor apagado."
+    else:
+        logger.error(f"Error al detener contenedor: {output}")
+        if "No such" in output:
+            return False, "Contenedor no existe"
+        return False, f"Error: {output}"
+
+def restart_container() -> tuple[bool, str]:
+    """Reiniciar el contenedor"""
+    logger.info(f"Reiniciando contenedor {PZ_CONTAINER}")
+    ok, output = _docker_command(["restart", "-t", "30", PZ_CONTAINER], timeout=60)
+    if ok:
+        logger.info("Contenedor reiniciado correctamente")
+        return True, "Reiniciando..."
+    else:
+        logger.error(f"Error al reiniciar contenedor: {output}")
+        if "No such" in output:
+            return False, "Contenedor no existe"
+        return False, f"Error: {output}"
