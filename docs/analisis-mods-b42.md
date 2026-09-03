@@ -615,7 +615,153 @@ Map=Muldraugh, KY;MoatsB42
 
 ---
 
-## 10. Fuentes
+## 10. Safe Uninstall: Requisitos por Mod
+
+> **⚠️ IMPORTANTE:** En Project Zomboid B42, quitar mods de un save existente puede corromper el mundo. Cada mod tiene riesgos diferentes según tipo. Esta sección documenta qué mods se pueden quitar de forma segura y cuáles requieren procedimientos especiales.
+
+### Principio general de B42
+Build 42 almacena definiciones de mods en el `WorldDictionary` del save. Si se quita un mod que registró contenido (items, recetas, entidades de mundo), el juego puede fallar al cargar porque esas definiciones ya no existen.
+
+### Clasificación de riesgo por tipo de mod
+
+| Tipo de mod | Riesgo al quitar | Descripción |
+|-------------|-------------------|-------------|
+| **Framework** (damnlib, StarlitLibrary) | 🔴 ALTO | Si otros mods dependen de él, esos mods también deben quitarse. Si no hay dependientes, es seguro. |
+| **QoL/Interface** | 🟢 BAJO | No registran contenido en el mundo. Safe para quitar. |
+| **Audio/Música** | 🟢 BAJO | Solo agregan items de audio. Seguro. |
+| **Recetas/Cocina** | 🟡 MEDIO | Recetas creadas desaparecen de los生存istas. No corrompe el save pero items cocinados con esas recetas pueden quedar en inventario sin receta asociada. |
+| **Armas/Armament** | 🔴 ALTO | Reemplazan modelos vanilla. Items spawned quedan con texturas rotas. |
+| **Vehículos** | 🟠 ALTO | Vehículos en el mundo quedan como objetos huérfanos. Pueden causar errores de carga. |
+| **Mapas** | 🔴 CRÍTICO | NO se pueden quitar de un save existente. Crea huecos en el mapa y corrupción del mundo. |
+| **Mundo** (plomería, construcciones) | 🔴 ALTO | Entidades construidas por el jugador quedan con scripts inválidos. Save puede romperse. |
+
+---
+
+### Mods con Safe Uninstall Soportado
+
+#### Waterpipes (Workshop: 3546314080)
+- **Riesgo:** 🔴 ALTO — "if you remove the mod, your save will break"
+- **Safe Uninstall:** ✅ SÍ — El mod incluye `WaterpipesRemoved` (Mod ID incluido)
+- **Procedimiento:**
+  1. Quitar `Waterpipes` de `Mods=`
+  2. Agregar `WaterpipesRemoved` a `Mods=`
+  3. Agregar el mismo Workshop ID `3546314080` a `WorkshopItems=`
+  4. Reiniciar servidor
+- **Nota:** Las tuberías instaladas permanecen en el mundo pero sin funcionalidad. No se pueden construir nuevas.
+
+#### ShelterHold: Beehive (Workshop: ShelterHold_Beehive)
+- **Riesgo:** 🔴 ALTO — Entidades de colmenas/extractores quedan con definiciones faltantes
+- **Safe Uninstall:** ✅ SÍ — Existe mod separado `ShelterHold: Beehive - Safe Uninstall Support` (Workshop: 3791498378)
+- **Procedimiento:**
+  1. Detener servidor y backup del save
+  2. Quitar `ShelterHold_Beehive` de `Mods=`
+  3. Agregar `ShelterHold_Beehive_SafeUninstallSupport` a `Mods=`
+  4. Quitar el Workshop ID principal de `WorkshopItems=`, agregar `3791498378`
+  5. Reiniciar servidor
+- **Nota:** NO habilitar ambos mods al mismo tiempo. Las colmenas/extractores existentes permanecen pero sin producción.
+
+---
+
+### Mods con Riesgo ALTO (No Safe Uninstall)
+
+#### GaelGunStore_B42 (Workshop: 3616176188)
+- **Riesgo:** 🔴 ALTO
+- **Descripción:** Reemplaza TODAS las armas vanilla. 366+ armas, 400+ accesorios.
+- **Al quitar:** Items spawned en el mundo quedan con texturas/modelos rotos. El juego mostrará errores de "missing dictionary script" para cada arma GaelGunStore en inventarios, contenedores y zombies.
+- **Safe Uninstall:** ❌ NO — No incluye mecanismo de desinstalación segura.
+- **Recomendación:** Si se quita, considerar empezar un mundo nuevo. O usar debug mode para eliminar todos los items del mod antes de quitarlo ( laborioso).
+
+#### firearms / Hyzo (Workshop: 2256623447)
+- **Riesgo:** 🔴 ALTO
+- **Descripción:** "all of the changes in this mod will irreversibly change any save it is applied to, so it is therefore not recommended you remove this mod mid-playthrough."
+- **Al quitar:** Texturas rotas para todas las armas de firearms en el mundo.
+- **Safe Uninstall:** ❌ NO — Autor advierte explícitamente contra desinstalación mid-playthrough.
+- **Recomendación:** Igual que GaelGunStore. Elegir uno y no quitarlo.
+
+#### MoatsB42 (Mapa)
+- **Riesgo:** 🔴 CRÍTICO
+- **Descripción:** Mapa completo que agrega chunks al mundo.
+- **Al quitar:** Crea huecos en el mapa, terreno faltante, structures rotas. El mundo puede volverse injugable.
+- **Safe Uninstall:** ❌ NO — Los mapas NO se pueden quitar de saves existentes bajo ninguna circunstancia.
+- **Recomendación:** Si se instaló, debe permanecer para siempre en ese save.
+
+---
+
+### Mods con Riesgo MEDIO
+
+#### KI5trailers + damnlib (Workshop: 3330403100)
+- **Riesgo:** 🟠 ALTO
+- **Descripción:** Vehículos trailers que quedan como objetos en el mundo.
+- **Al quitar:** Trailers en el mundo quedan como objetos huérfanos. Pueden causar errores al cargar chunks, pero generalmente el save no se rompe completamente.
+- **Safe Uninstall:** ⚠️ PARCIAL — No hay safe uninstall mod. Pero el riesgo es manejable si no hay muchos vehículos spawned.
+- **Recomendación:** Antes de quitar, recoger todos los trailers a una zona central y eliminarlos con admin commands.
+
+#### NepWreckWorkingCars
+- **Riesgo:** 🟠 ALTO
+- **Descripción:** Vehículos wrecked reparables.
+- **Al quitar:** Mismo caso que KI5 — vehículos huérfanos en el mundo.
+- **Safe Uninstall:** ⚠️ PARCIAL — Sin mecanismo oficial.
+- **Recomendación:** Misma que KI5trailers.
+
+#### BritasArmorPackB42 (Workshop: 3780298456)
+- **Riesgo:** 🟡 MEDIO
+- **Descripción:** Solo ropa/armadura, NO armas. No modifica entidades de mundo.
+- **Al quitar:** Items de Brita en inventarios quedan sin modelo visible. No corrompe el mundo pero objetos son inutilizables.
+- **Safe Uninstall:** ⚠️ PARCIAL — No incluye safe uninstall. Pero al ser solo items de inventario (no world entities), el save generalmente carga bien.
+- **Recomendación:** Antes de quitar, tirar/vender todos los items de Brita en el mundo.
+
+#### Waterpipes (sin usar WaterpipesRemoved)
+- **Riesgo:** 🔴 ALTO
+- **Al quitar sin Safe Uninstall:** Save NO carga. El juego falla porque las tuberías construidas tienen scripts que ya no existen.
+- **Recomendación:** SIEMPRE usar el procedimiento de Safe Uninstall con `WaterpipesRemoved`.
+
+---
+
+### Mods con Riesgo BAJO (Safe para quitar)
+
+| Mod | Workshop | Tipo | Razón safe |
+|-----|----------|------|------------|
+| CleanHotBar | No verificado | QoL | Interfaz, no world data |
+| ProximityInventory | 2847184718 | QoL | Interfaz |
+| P4HasBeenRead | 2544353492 | QoL | Solo flags de lectura |
+| TrueWeight | No verificado | QoL | Solo info en UI |
+| Obvious_Skill_Tapes | No verificado | QoL | Solo labels |
+| RepairAnyClothes | No verificado | QoL | Solo recetas, items vanilla |
+| AutoDrop_B42 | No verificado | QoL | Gameplay helper |
+| RainCleansBlood | 2956146279 | Inmersión | Solo visual, no world entities |
+| TrueMoozic | 3632610172 | Audio | Items de audio, no world data |
+| TM_PinkFloydDark | No verificado | Audio | Contenido musical |
+| VanillaFoodsExpanded | 3577903007 | Recetas | Recetas nuevas. Al quitar, desaparecen pero no corrompen. |
+| BCGRareWeaponsTEST | 2432621382 | Armas ligeras | Solo 2 armas raras, solo loot tables. No reemplaza vanilla. |
+| BurdSurvivalJournals | No verificado | Contenido | Items de inventario |
+| traitsAsSkills | No verificado | QoL | Solo progresión |
+| ReducedWoodWeight2x41 | No verificado | Balance | Solo pesos |
+| 50%metalweight | No verificado | Balance | Solo pesos |
+
+---
+
+### Resumen de safe uninstall por opción de configuración
+
+#### Opción A (15 mods) — ✅ SAFE para reconfigurar
+Todos los mods de esta opción son QoL/audio/balance. Ninguno modifica el mundo ni reemplaza entidades vanilla. Se pueden quitar sin problemas.
+
+#### Opción B (20 mods) — ⚠️ CUIDADO con estos:
+- **Waterpipes** → Usar WaterpipesRemoved antes de quitar
+- **KI5trailers** → Recoger todos los trailers antes de quitar
+- **damnlib** → Solo quitar si no hay otros mods KI5 activos
+- **BritasArmorPackB42** → Tirar items Brita antes de quitar
+
+#### Opción C (18 mods con GaelGunStore) — ⚠️ ALTO RIESGO
+- **GaelGunStore_B42** → No se puede quitar de forma segura. Si se quita, el mundo queda con items rotos. Considérese como permanente para ese save.
+
+---
+
+### Regla de oro
+> **Antes de quitar cualquier mod de categoría ALTA o CRÍTICA, hacer backup del save completo. Si el mod agregó entidades al mundo (vehículos, construcciones, armas spawned), el save puede no cargar correctamente sin ese mod.**
+
+---
+
+## 11. Fuentes
 
 - Steam Workshop: https://steamcommunity.com/app/108600/workshop/
 - Guía RAM B42: https://winternode.com/blog/project-zomboid/how-much-ram
@@ -623,3 +769,8 @@ Map=Muldraugh, KY;MoatsB42
 - Guía mods B42: https://winternode.com/blog/project-zomboid/best-server-mods-build-42
 - Colección analizada: https://steamcommunity.com/sharedfiles/filedetails/?id=3435349193
 - Mods individuales: https://steamcommunity.com/workshop/filedetails/?id=2490220997
+- Guía removal: https://supercraft.host/wiki/project-zomboid/remove_mod/
+- Waterpipes: https://steamcommunity.com/sharedfiles/filedetails/?id=3546314080
+- ShelterHold Safe Uninstall: https://steamcommunity.com/sharedfiles/filedetails/?id=3791498378
+- GaelGunStore: https://steamcommunity.com/sharedfiles/filedetails/?id=3616176188
+- firearms: https://steamcommunity.com/sharedfiles/filedetails/?id=2256623447
