@@ -3,8 +3,6 @@
 # Script de pruebas de seguridad para el bot de Telegram
 # Genera test-results.txt con todos los resultados
 
-set -e
-
 OUTPUT_FILE="test-results.txt"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
@@ -25,12 +23,19 @@ run_test() {
     echo "Resultado:" >> "$OUTPUT_FILE"
     echo "" >> "$OUTPUT_FILE"
     
-    if eval "$test_command" >> "$OUTPUT_FILE" 2>&1; then
-        echo "" >> "$OUTPUT_FILE"
+    # Ejecutar comando y capturar salida y código de salida
+    set +e
+    output=$(eval "$test_command" 2>&1)
+    exit_code=$?
+    set -e
+    
+    echo "$output" >> "$OUTPUT_FILE"
+    echo "" >> "$OUTPUT_FILE"
+    
+    if [ $exit_code -eq 0 ]; then
         echo "✅ PASÓ" >> "$OUTPUT_FILE"
     else
-        echo "" >> "$OUTPUT_FILE"
-        echo "❌ FALLÓ" >> "$OUTPUT_FILE"
+        echo "❌ FALLÓ (código: $exit_code)" >> "$OUTPUT_FILE"
     fi
     echo "" >> "$OUTPUT_FILE"
 }
@@ -58,7 +63,7 @@ run_test "Bot corre como no-root" "docker exec pz-telegram-bot whoami"
 # ========================================
 # PRUEBA 5: Verificar que el proxy de Docker está corriendo
 # ========================================
-run_test "Proxy de Docker activo" "docker logs pz-docker-proxy --tail 10 | grep -E '(Running on|Iniciando proxy|Contenedor permitido)'"
+run_test "Proxy de Docker activo" "docker logs pz-docker-proxy --tail 10 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -E '(Running on|Iniciando proxy|Contenedor permitido)'"
 
 # ========================================
 # PRUEBA 6: Verificar que el bot puede obtener estado del contenedor
@@ -74,13 +79,15 @@ echo "Comando: docker exec pz-telegram-bot docker inspect tailscale-project-zomb
 echo "Resultado esperado: Error 403 Forbidden" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
-OUTPUT=$(docker exec pz-telegram-bot docker inspect tailscale-project-zomboid 2>&1)
+set +e
+OUTPUT=$(timeout 30 docker exec pz-telegram-bot docker inspect tailscale-project-zomboid 2>&1)
 EXIT_CODE=$?
+set -e
 
 echo "$OUTPUT" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
-if echo "$OUTPUT" | grep -q "Forbidden\|403\|no permitido"; then
+if echo "$OUTPUT" | grep -qi "Forbidden\|403\|no permitido"; then
     echo "✅ PASÓ - Proxy bloqueó acceso a otro contenedor" >> "$OUTPUT_FILE"
 else
     echo "❌ FALLÓ - Proxy NO bloqueó acceso a otro contenedor" >> "$OUTPUT_FILE"
@@ -95,12 +102,12 @@ run_test "Bot puede ejecutar RCON via docker exec" "docker exec pz-telegram-bot 
 # ========================================
 # PRUEBA 9: Verificar que el bot tiene acceso de lectura a la DB
 # ========================================
-run_test "Bot puede leer SQLite DB" "docker exec pz-telegram-bot sqlite3 /pz-data/db/server-zomboid.db 'SELECT COUNT(*) FROM whitelist;'"
+run_test "Bot puede leer SQLite DB" "docker exec pz-telegram-bot python -c \"import sqlite3; conn = sqlite3.connect('/pz-data/db/server-zomboid.db'); print(conn.execute('SELECT COUNT(*) FROM whitelist').fetchone()[0]); conn.close()\""
 
 # ========================================
 # PRUEBA 10: Verificar que el bot NO puede escribir en la DB
 # ========================================
-run_test "Bot NO puede escribir en SQLite DB (debería fallar)" "docker exec pz-telegram-bot sqlite3 /pz-data/db/server-zomboid.db 'INSERT INTO whitelist (username) VALUES (\"test\");' 2>&1 || echo '✅ Correcto: No puede escribir en la DB'"
+run_test "Bot NO puede escribir en SQLite DB (debería fallar)" "docker exec pz-telegram-bot python -c \"import sqlite3; conn = sqlite3.connect('/pz-data/db/server-zomboid.db'); conn.execute('INSERT INTO whitelist (username) VALUES (\\\"test\\\")'); conn.commit()\" 2>&1 || echo '✅ Correcto: No puede escribir en la DB'"
 
 # ========================================
 # PRUEBA 11: Verificar red interna
@@ -136,7 +143,10 @@ echo "Intentando acceder a contenedor no permitido desde el bot..." >> "$OUTPUT_
 echo "" >> "$OUTPUT_FILE"
 
 # Intentar acceder a otro contenedor
-OUTPUT=$(docker exec pz-telegram-bot docker inspect tailscale-project-zomboid 2>&1)
+set +e
+OUTPUT=$(timeout 30 docker exec pz-telegram-bot docker inspect tailscale-project-zomboid 2>&1)
+set -e
+
 echo "Salida: $OUTPUT" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
@@ -149,7 +159,7 @@ echo "" >> "$OUTPUT_FILE"
 
 # Verificar en logs del proxy que se registró el bloqueo
 echo "Verificando logs del proxy..." >> "$OUTPUT_FILE"
-docker logs pz-docker-proxy --tail 20 2>&1 | grep -i "bloqueado\|forbidden" >> "$OUTPUT_FILE" || echo "No se encontró registro de bloqueo en logs" >> "$OUTPUT_FILE"
+docker logs pz-docker-proxy --tail 20 2>&1 | sed 's/\x1b\[[0-9;]*m//g' | grep -i "bloqueado\|forbidden" >> "$OUTPUT_FILE" || echo "No se encontró registro de bloqueo en logs" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
 # ========================================
@@ -157,7 +167,7 @@ echo "" >> "$OUTPUT_FILE"
 # ========================================
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━" >> "$OUTPUT_FILE"
 echo "PRUEBA: Bot puede controlar contenedor (start/stop/restart)" >> "$OUTPUT_FILE"
-echo "Nota: Esta prueba requiere que el servidor esté offline" >> "$OUTPUT_FILE"
+echo "Nota: Esta prueba prueba stop y start del servidor" >> "$OUTPUT_FILE"
 echo "" >> "$OUTPUT_FILE"
 
 # Verificar estado actual
@@ -167,12 +177,12 @@ echo "" >> "$OUTPUT_FILE"
 
 if [ "$CURRENT_STATUS" == "running" ]; then
     echo "Contenedor está corriendo, probando stop..." >> "$OUTPUT_FILE"
-    if docker exec pz-telegram-bot docker stop -t 30 project-zomboid >> "$OUTPUT_FILE" 2>&1; then
+    if timeout 60 docker exec pz-telegram-bot docker stop -t 30 project-zomboid >> "$OUTPUT_FILE" 2>&1; then
         echo "✅ Stop exitoso" >> "$OUTPUT_FILE"
         sleep 5
         
         echo "Probando start..." >> "$OUTPUT_FILE"
-        if docker exec pz-telegram-bot docker start project-zomboid >> "$OUTPUT_FILE" 2>&1; then
+        if timeout 30 docker exec pz-telegram-bot docker start project-zomboid >> "$OUTPUT_FILE" 2>&1; then
             echo "✅ Start exitoso" >> "$OUTPUT_FILE"
         else
             echo "❌ Start falló" >> "$OUTPUT_FILE"
@@ -182,7 +192,7 @@ if [ "$CURRENT_STATUS" == "running" ]; then
     fi
 else
     echo "Contenedor no está corriendo, probando start..." >> "$OUTPUT_FILE"
-    if docker exec pz-telegram-bot docker start project-zomboid >> "$OUTPUT_FILE" 2>&1; then
+    if timeout 30 docker exec pz-telegram-bot docker start project-zomboid >> "$OUTPUT_FILE" 2>&1; then
         echo "✅ Start exitoso" >> "$OUTPUT_FILE"
     else
         echo "❌ Start falló" >> "$OUTPUT_FILE"
