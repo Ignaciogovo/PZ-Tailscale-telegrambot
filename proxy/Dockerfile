@@ -1,5 +1,6 @@
 FROM python:3.11-slim
 
+# Crear usuario no-root (por si se necesita en el futuro)
 RUN groupadd -r proxyuser && useradd -r -g proxyuser -d /home/proxyuser -s /sbin/nologin proxyuser
 
 WORKDIR /app
@@ -11,6 +12,6 @@ COPY proxy.py .
 
 RUN chown -R proxyuser:proxyuser /app
 
-USER proxyuser
-
+# NOTA: El proxy corre como root para acceder al socket de Docker
+# Está aislado en red interna (pz-internal) y solo acepta conexiones del bot
 CMD ["python", "proxy.py"]
