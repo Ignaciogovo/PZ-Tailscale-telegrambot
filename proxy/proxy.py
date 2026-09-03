@@ -74,7 +74,9 @@ def proxy(path):
     
     # Reenviar petición al socket de Docker
     try:
-        url = f"{DOCKER_SOCKET}/{path}"
+        # Formato correcto para requests-unixsocket: el path del socket debe estar URL-encoded
+        socket_path_encoded = "%2Fvar%2Frun%2Fdocker.sock"
+        url = f"http+unix://{socket_path_encoded}/{path}"
         
         response = session.request(
             method=request.method,

@@ -58,7 +58,7 @@ run_test "Bot corre como no-root" "docker exec pz-telegram-bot whoami"
 # ========================================
 # PRUEBA 5: Verificar que el proxy de Docker está corriendo
 # ========================================
-run_test "Proxy de Docker activo" "docker logs pz-docker-proxy --tail 5 | grep -E '(Iniciando proxy|Contenedor permitido)'"
+run_test "Proxy de Docker activo" "docker logs pz-docker-proxy --tail 10 | grep -E '(Running on|Iniciando proxy|Contenedor permitido)'"
 
 # ========================================
 # PRUEBA 6: Verificar que el bot puede obtener estado del contenedor
