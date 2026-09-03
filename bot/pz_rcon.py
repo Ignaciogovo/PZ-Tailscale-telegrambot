@@ -203,6 +203,15 @@ def quit_server() -> str:
 def kick_player(username: str) -> str:
     if not validate_username(username):
         raise ValueError(f"Username inválido: {username}")
+    
+    # Verificar rol del usuario antes de kickear
+    user_info = get_user_info(username)
+    if user_info:
+        role = user_info["role"]
+        protected_roles = ["admin", "moderator", "overseer", "gm"]
+        if role in protected_roles:
+            raise ValueError(f"⚠️ No se puede kickear a {username} (rol: {role}). Primero cambia su rol a 'user'.")
+    
     return rcon_call(f"kickuser {username}")
 
 def ban_player(steam_id: str) -> str:
