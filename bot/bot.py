@@ -230,6 +230,13 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logger.info(f"Resultado restart_container: ok={ok}, msg={msg}")
         await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(True))
 
+    elif data.startswith("askremove:"):
+        username = data.split(":", 1)[1]
+        if not validate_username(username):
+            await safe_edit(query, f"❌ Username inválido: {username}", reply_markup=main_menu(online))
+            return
+        await safe_edit(query, f"⚠️ ¿Estás seguro que deseas eliminar a {username}?", reply_markup=confirm_menu("remove", username))
+
     elif data.startswith("confirm:"):
         parts = data.split(":")
         action, username = parts[1], parts[2] if len(parts) > 2 else ""

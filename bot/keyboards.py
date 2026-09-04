@@ -36,7 +36,7 @@ def player_detail_menu(username: str, is_banned: bool = False) -> InlineKeyboard
         buttons.append([InlineKeyboardButton("🚫 Ban", callback_data=f"ban:{username}")])
     buttons.extend([
         [InlineKeyboardButton("🛡 Cambiar rol", callback_data=f"role:{username}")],
-        [InlineKeyboardButton("🗑 Eliminar usuario", callback_data=f"confirm:remove:{username}")],
+        [InlineKeyboardButton("🗑 Eliminar usuario", callback_data=f"askremove:{username}")],
         [InlineKeyboardButton("◀️ Volver", callback_data="players")],
     ])
     return InlineKeyboardMarkup(buttons)
