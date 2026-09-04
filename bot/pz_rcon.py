@@ -130,9 +130,6 @@ def remove_user(username: str) -> str:
 def save_server() -> str:
     return rcon_call("save")
 
-def quit_server() -> str:
-    return rcon_call("quit")
-
 def kick_player(username: str) -> str:
     if not validate_username(username):
         raise ValueError(f"Username inválido: {username}")
@@ -159,6 +156,8 @@ def _docker_api(method: str, path: str, timeout: int = 10, params: dict = None) 
             resp = getattr(client, method)(f"{DOCKER_HOST}{path}", params=params)
             if resp.status_code in (200, 204):
                 return True, resp.text.strip() if resp.text else ""
+            if resp.status_code == 304:
+                return True, "Ya estaba detenido."
             return False, resp.text.strip()
     except httpx.TimeoutException:
         return False, "Timeout"

@@ -71,7 +71,6 @@ services:
     env_file:
       - .env
     environment:
-      PZ_CONTAINER: project-zomboid
       PZ_DB_PATH: /pz-data/db/server-zomboid.db
       DOCKER_HOST: http://docker-socket-proxy:2375
     volumes:

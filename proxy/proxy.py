@@ -4,7 +4,7 @@ import json
 import logging
 import socket
 from http.server import HTTPServer, BaseHTTPRequestHandler
-import httpx
+from http.client import HTTPConnection, OK
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -12,9 +12,6 @@ logger = logging.getLogger(__name__)
 ALLOWED_CONTAINER = os.getenv("ALLOWED_CONTAINER", "project-zomboid")
 PROXY_PORT = int(os.getenv("PROXY_PORT", "2375"))
 DOCKER_SOCKET = "/var/run/docker.sock"
-
-transport = httpx.HTTPTransport(uds=DOCKER_SOCKET)
-client = httpx.Client(transport=transport, base_url="http://localhost", timeout=30.0)
 
 RCON_CONFIG = "/home/steam/server/rcon.yml"
 MAX_COMMAND_LENGTH = 200
@@ -29,6 +26,28 @@ VALID_ROLES = {"admin", "moderator", "user", "observer", "gm"}
 
 RE_USERNAME = re.compile(r'^[a-zA-Z0-9_-]{1,32}$')
 RE_STEAM_ID = re.compile(r'^\d{17}$')
+
+
+class UnixHTTPConnection(HTTPConnection):
+    def __init__(self, uds_path, timeout=30):
+        super().__init__("localhost", timeout=timeout)
+        self.uds_path = uds_path
+
+    def connect(self):
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.settimeout(self.timeout)
+        self.sock.connect(self.uds_path)
+
+
+def docker_request(method, path, body=None, timeout=30):
+    conn = UnixHTTPConnection(DOCKER_SOCKET, timeout=timeout)
+    try:
+        conn.request(method, path, body=body, headers={"Content-Type": "application/json"} if body else {})
+        resp = conn.getresponse()
+        data = resp.read().decode(errors="replace")
+        return resp.status, data
+    finally:
+        conn.close()
 
 
 def validate_rcon_command(command: str) -> tuple[bool, str]:
@@ -71,36 +90,24 @@ def validate_rcon_command(command: str) -> tuple[bool, str]:
 
 def docker_exec_rcon(command: str) -> tuple[bool, str]:
     try:
-        resp = client.post(
+        status, data = docker_request("POST",
             f"/containers/{ALLOWED_CONTAINER}/exec",
-            json={
-                "AttachStdout": True,
-                "AttachStderr": True,
-                "Cmd": ["rcon-cli", "-c", RCON_CONFIG, command],
-            },
-            timeout=10,
-        )
-        if resp.status_code != 201:
-            logger.warning(f"exec create falló: {resp.status_code} {resp.text[:200]}")
-            return False, f"exec create failed: {resp.status_code}"
-        exec_id = resp.json().get("Id")
+            body=json.dumps({"AttachStdout": True, "AttachStderr": True,
+                             "Cmd": ["rcon-cli", "-c", RCON_CONFIG, command]}))
+        if status != 201:
+            logger.warning(f"exec create falló: {status} {data[:200]}")
+            return False, f"exec create failed: {status}"
+        exec_id = json.loads(data).get("Id")
         if not exec_id:
             return False, "exec create: sin Id"
 
-        resp = client.post(
-            f"/exec/{exec_id}/start",
-            json={"Detach": False, "Tty": False},
-            timeout=30,
-        )
-        if resp.status_code != 200:
-            logger.warning(f"exec start falló: {resp.status_code}")
-            return False, f"exec start failed: {resp.status_code}"
+        status, data = docker_request("POST", f"/exec/{exec_id}/start",
+            body=json.dumps({"Detach": False, "Tty": False}), timeout=30)
+        if status != 200:
+            logger.warning(f"exec start falló: {status}")
+            return False, f"exec start failed: {status}"
 
-        output = resp.content.decode(errors="replace").strip()
-        return True, output
-
-    except httpx.TimeoutException:
-        return False, "Timeout"
+        return True, data.strip()
     except Exception as e:
         logger.error(f"docker_exec_rcon error: {e}")
         return False, str(e)
@@ -142,23 +149,14 @@ class ProxyHandler(BaseHTTPRequestHandler):
 
         try:
             content_length = int(self.headers.get('Content-Length', 0))
-            body = self.rfile.read(content_length) if content_length > 0 else None
+            body = self.rfile.read(content_length).decode() if content_length > 0 else None
 
-            headers = {k: v for k, v in self.headers.items() if k.lower() != 'host'}
+            status, data = docker_request(self.command, self.path, body=body)
 
-            response = client.request(
-                method=self.command,
-                url=self.path,
-                headers=headers,
-                content=body,
-            )
-
-            self.send_response(response.status_code)
-            for name, value in response.headers.items():
-                if name.lower() not in ['content-encoding', 'content-length', 'transfer-encoding', 'connection']:
-                    self.send_header(name, value)
+            self.send_response(status)
+            self.send_header('Content-Type', 'application/json')
             self.end_headers()
-            self.wfile.write(response.content)
+            self.wfile.write(data.encode())
         except Exception as e:
             logger.error(f"Error proxy: {e}")
             self._send_json(502, {"message": f"Proxy error: {e}"})

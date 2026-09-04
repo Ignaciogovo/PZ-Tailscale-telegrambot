@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-from pz_rcon import get_players_fast, get_all_users, get_banned_steamids, get_user_info, set_role, remove_user, save_server, quit_server, kick_player, ban_player, unban_player, get_container_status, start_container as pz_start, stop_container as pz_stop, restart_container as pz_restart, validate_username, validate_steam_id, validate_role
+from pz_rcon import get_players_fast, get_all_users, get_banned_steamids, get_user_info, set_role, remove_user, save_server, kick_player, ban_player, unban_player, get_container_status, start_container as pz_start, stop_container as pz_stop, restart_container as pz_restart, validate_username, validate_steam_id, validate_role
 from keyboards import main_menu, players_menu, player_detail_menu, role_menu, confirm_menu
 
 logging.basicConfig(level=logging.INFO)
@@ -13,8 +13,6 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 ALLOWED_CHAT_IDS = [int(x) for x in os.getenv("TELEGRAM_CHAT_ID", "").split(",") if x.strip()]
-PZ_CONTAINER = os.getenv("PZ_CONTAINER", "project-zomboid")
-MAX_PLAYERS = int(os.getenv("MAX_PLAYERS", "8"))
 
 async def safe_edit(query, text, reply_markup=None):
     try:
@@ -26,47 +24,19 @@ async def safe_edit(query, text, reply_markup=None):
 def authorized(update: Update) -> bool:
     return update.effective_chat.id in ALLOWED_CHAT_IDS
 
-async def stop_container() -> tuple[bool, str]:
-    logger.info("Iniciando stop_container()")
-    try:
-        logger.info("Intentando guardar y cerrar servidor vía RCON...")
-        await asyncio.to_thread(save_server)
-        logger.info("Servidor guardado vía RCON")
-        await asyncio.to_thread(quit_server)
-        logger.info("Servidor cerrado vía RCON")
-        return True, "Guardando y apagando..."
-    except Exception as e:
-        logger.warning(f"RCON falló, intentando Docker stop: {e}")
-    return await asyncio.to_thread(pz_stop)
-
-async def restart_container() -> tuple[bool, str]:
-    logger.info("Iniciando restart_container()")
-    try:
-        logger.info("Intentando guardar y cerrar servidor vía RCON...")
-        await asyncio.to_thread(save_server)
-        logger.info("Servidor guardado vía RCON")
-        await asyncio.to_thread(quit_server)
-        logger.info("Servidor cerrado vía RCON")
-        logger.info("Esperando 5 segundos...")
-        await asyncio.sleep(5)
-        return await asyncio.to_thread(pz_start)
-    except Exception as e:
-        logger.warning(f"RCON falló, intentando Docker restart: {e}")
-    return await asyncio.to_thread(pz_restart)
+def status_text(online: bool, status: str) -> str:
+    if status == "starting":
+        return "🔄 REINICIANDO..."
+    if status == "unhealthy":
+        return "🔴 Problemas con el servidor"
+    return f"🟢 Servidor ONLINE" if online else f"🔴 Servidor OFFLINE"
 
 async def start_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not authorized(update):
         await update.message.reply_text("⛔ No autorizado.")
         return
     online, status = await asyncio.to_thread(get_container_status)
-    if status == "starting":
-        text = "🔄 REINICIANDO..."
-    elif status == "unhealthy":
-        text = "🔴 Problemas con el servidor"
-    else:
-        text = f"🟢 Servidor ONLINE" if online else f"🔴 Servidor OFFLINE"
-    text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
-    await update.message.reply_text(text, reply_markup=main_menu(online))
+    await update.message.reply_text(status_text(online, status), reply_markup=main_menu(online))
 
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not authorized(update):
@@ -86,15 +56,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if data == "main":
         if status == "not_found":
             text = "⚠️ Contenedor PZ no existe\n\nEjecuta en el host:\n`docker compose up -d projectzomboid`"
-        elif status == "starting":
-            text = "🔄 REINICIANDO..."
-            text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
-        elif status == "unhealthy":
-            text = "🔴 Problemas con el servidor"
-            text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
         else:
-            text = f"🟢 Servidor ONLINE" if online else f"🔴 Servidor OFFLINE"
-            text += f"\n👥 Jugadores: ?/{MAX_PLAYERS}"
+            text = status_text(online, status)
         await safe_edit(query, text, reply_markup=main_menu(online))
 
     elif data == "status":
@@ -246,7 +209,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "confirm:stop":
         logger.info("Handler confirm:stop ejecutado")
-        ok, msg = await stop_container()
+        await safe_edit(query, "⏳ Apagando servidor...")
+        ok, msg = await asyncio.to_thread(pz_stop)
         logger.info(f"Resultado stop_container: ok={ok}, msg={msg}")
         await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(False))
 
@@ -261,7 +225,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif data == "confirm:restart":
         logger.info("Handler confirm:restart ejecutado")
-        ok, msg = await restart_container()
+        await safe_edit(query, "⏳ Reiniciando servidor...")
+        ok, msg = await asyncio.to_thread(pz_restart)
         logger.info(f"Resultado restart_container: ok={ok}, msg={msg}")
         await safe_edit(query, f"{'✅' if ok else '❌'} {msg}", reply_markup=main_menu(True))
 
