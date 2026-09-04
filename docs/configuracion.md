@@ -77,18 +77,6 @@ Los jugadores deben tener los mismos mods suscritos en Steam Workshop.
 | 12 GB | 6 | 4 | 8g |
 | 16 GB | 8 | 6 | 12g |
 
-## Backup
-
-```bash
-# Backup completo
-sudo tar -czf /tmp/pz-backup-$(date +%Y%m%d-%H%M%S).tar.gz \
-  -C /srv/data/project-zomboid .
-
-# Solo saves
-sudo tar -czf /tmp/pz-saves-$(date +%Y%m%d-%H%M%S).tar.gz \
-  -C /srv/data/project-zomboid/server-data/Saves .
-```
-
 ## Actualizar servidor
 
 ```bash

@@ -5,8 +5,8 @@ from telegram import Update
 from telegram.error import BadRequest
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-from pz_rcon import get_players_fast, get_all_users, get_banned_steamids, get_user_info, set_role, remove_user, save_server, quit_server, kick_player, ban_player, unban_player, add_user, get_container_status, start_container as pz_start, stop_container as pz_stop, restart_container as pz_restart, validate_username, validate_steam_id, validate_role
-from keyboards import main_menu, players_menu, player_detail_menu, admin_menu, role_menu, confirm_menu
+from pz_rcon import get_players_fast, get_all_users, get_banned_steamids, get_user_info, set_role, remove_user, save_server, quit_server, kick_player, ban_player, unban_player, get_container_status, start_container as pz_start, stop_container as pz_stop, restart_container as pz_restart, validate_username, validate_steam_id, validate_role
+from keyboards import main_menu, players_menu, player_detail_menu, role_menu, confirm_menu
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -165,7 +165,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"Steam: {user_info['steamid']}\n"
             text += f"Última conexión: {user_info['last_connection']}"
             
-            await safe_edit(query, text, reply_markup=player_detail_menu(username, user_info["steamid"], is_banned))
+            await safe_edit(query, text, reply_markup=player_detail_menu(username, is_banned))
         except Exception as e:
             await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
 
@@ -211,9 +211,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             user_info = get_user_info(username)
             banned_ids = get_banned_steamids()
             is_banned = user_info["steamid"] in banned_ids if user_info else False
-            await safe_edit(query, f"✅ Rol de {username} cambiado a {role}", reply_markup=player_detail_menu(username, user_info["steamid"] if user_info else "", is_banned))
+            await safe_edit(query, f"✅ Rol de {username} cambiado a {role}", reply_markup=player_detail_menu(username, is_banned))
         except Exception as e:
-            await safe_edit(query, f"Error: {e}", reply_markup=player_detail_menu(username, "", False))
+            await safe_edit(query, f"Error: {e}", reply_markup=player_detail_menu(username))
 
     elif data == "save":
         if not online:
@@ -300,12 +300,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await safe_edit(query, f"✅ {username} eliminado de la whitelist", reply_markup=main_menu(online))
         except Exception as e:
             await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
-
-    elif data == "admin":
-        await safe_edit(query, "🛠 ADMINISTRACIÓN", reply_markup=admin_menu())
-
-    elif data == "console":
-        await safe_edit(query, "📜 Consola\n\n(Próximamente)", reply_markup=admin_menu())
 
 def main():
     if not BOT_TOKEN:

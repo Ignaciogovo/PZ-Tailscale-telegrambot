@@ -14,7 +14,9 @@ Servidor dedicado de Project Zomboid B42 accesible desde cualquier lugar y gesti
 
 Arquitectura de red: PZ comparte red con Tailscale. Bot y proxy están en red interna aislada (`pz-internal`).
 
-- **Repositorio upstream**: `indifferentbroccoli/projectzomboid-server-docker` guardado en `pz-docker/` como referencia. Consultar para entender Dockerfile, scripts, variables de entorno. Actualizar cuando se quiera sincronizar con la imagen oficial.
+- **Repositorio upstream**: `indifferentbroccoli/projectzomboid-server-docker` guardado en `pz-docker/` como referencia. Consultar para entender Dockerfile, scripts, variables de entorno. Ver `pz-docker/VERSION.md` para versión del commit sincronizado. Actualizar cuando se quiera sincronizar con la imagen oficial.
+- **Script de reset**: `scripts/reset-server.sh` reinicia el mundo/personajes desde el host. Detecta `docker-compose.yml` automáticamente, pregunta ruta y tipo de reset (solo personajes o mundo completo). Opera directamente sobre archivos del host sin `docker compose exec`.
+- **Guía de usuario**: `README.md` contiene la guía de instalación para usuarios finales (clonar, configurar `.env`, arrancar Tailscale, autenticar, arrancar el resto).
 
 ### Medidas de seguridad del bot de Telegram
 El bot necesita acceso a Docker para arrancar/parar/reiniciar el contenedor de PZ. Esto implica riesgos de seguridad que se mitigaron así:
@@ -26,7 +28,7 @@ El bot necesita acceso a Docker para arrancar/parar/reiniciar el contenedor de P
 **Medidas implementadas**:
 1. **Proxy de Docker**: Bot no tiene acceso directo al socket. Proxy filtra por nombre de contenedor (solo `project-zomboid`)
 2. **Validación de inputs**: Usernames, Steam IDs y roles validados con regex estrictos (previene inyección de comandos)
-3. **No-root**: Bot y proxy corren como usuarios no-root (`botuser`, `proxyuser`)
+3. **No-root**: Bot corre como usuario no-root (`botuser`). Proxy necesita root para acceder al socket de Docker.
 4. **Red aislada**: Bot y proxy en red interna (`pz-internal`), separada de Tailscale
 
 **Por qué**: Si el chat de Telegram es comprometido, el atacante solo puede controlar PZ, no el host ni otros contenedores.

@@ -1,6 +1,10 @@
 .env
 logs.txt
+logs2.txt
 estado-docker.txt
 test-results.txt
 
 data/project-zomboid/
+
+docs/server.ini
+docs/mods-referencia.md

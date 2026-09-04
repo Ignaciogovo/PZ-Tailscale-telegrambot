@@ -8,7 +8,6 @@ def main_menu(online: bool) -> InlineKeyboardMarkup:
         [InlineKeyboardButton("🔄 Reiniciar", callback_data="restart")],
         [InlineKeyboardButton("⛔ Apagar", callback_data="stop")],
         [InlineKeyboardButton("▶️ Arrancar", callback_data="start")],
-        [InlineKeyboardButton("🛠 Administración", callback_data="admin")],
     ]
     return InlineKeyboardMarkup(buttons)
 
@@ -27,7 +26,7 @@ def players_menu(users: list[dict], connected_names: set, banned_ids: set) -> In
     buttons.append([InlineKeyboardButton("◀️ Volver", callback_data="main")])
     return InlineKeyboardMarkup(buttons)
 
-def player_detail_menu(username: str, steamid: str = "", is_banned: bool = False) -> InlineKeyboardMarkup:
+def player_detail_menu(username: str, is_banned: bool = False) -> InlineKeyboardMarkup:
     buttons = [
         [InlineKeyboardButton("👢 Kick", callback_data=f"kick:{username}")],
     ]
@@ -40,13 +39,6 @@ def player_detail_menu(username: str, steamid: str = "", is_banned: bool = False
         [InlineKeyboardButton("🗑 Eliminar usuario", callback_data=f"confirm:remove:{username}")],
         [InlineKeyboardButton("◀️ Volver", callback_data="players")],
     ])
-    return InlineKeyboardMarkup(buttons)
-
-def admin_menu() -> InlineKeyboardMarkup:
-    buttons = [
-        [InlineKeyboardButton("📜 Consola", callback_data="console")],
-        [InlineKeyboardButton("◀️ Volver", callback_data="main")],
-    ]
     return InlineKeyboardMarkup(buttons)
 
 def role_menu(username: str) -> InlineKeyboardMarkup:

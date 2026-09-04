@@ -1,109 +1,105 @@
-# Servidor Project Zomboid Docker + Tailscale
+# Project Zomboid + Tailscale + Telegram Bot
 
-Servidor dedicado de Project Zomboid B42 con acceso privado mediante Tailscale.
-
-## Arquitectura
-
-```
-Internet
-   │
-   X  ← NO acceso directo
-   │
-Tailscale (tailnet privada)
-   │
-   ├── tailscale container
-   │     hostname: project_projectz-pollito
-   │     IP: 100.x.y.z
-   │     │
-   │     └── projectzomboid container (network_mode: service:tailscale)
-   │           ├── UDP 16261 ← juego
-   │           ├── UDP 16262 ← Steam direct
-   │           └── TCP 27015 ← RCON
-   │
-   └── Jugadores con Tailscale
-         → Conectan a 100.x.y.z:16261
-```
-
-## Estructura de directorios
-
-```
-/srv/contenedores/project-zomboid/
-├── docker-compose.yml
-└── .env
-
-/srv/data/project-zomboid/
-├── tailscale/              ← Estado de Tailscale (NO TOCAR)
-├── server-files/           ← Archivos del juego
-└── server-data/            ← Configuración y datos
-    ├── Server/
-    │   ├── <SERVER_NAME>.ini
-    │   └── <SERVER_NAME>_SandboxVars.lua
-    ├── Workshop/           ← Mods descargados
-    └── Saves/              ← Partidas guardadas
-```
+Servidor de Project Zomboid B42 accesible desde cualquier lugar
+sin port-forwarding, administrable vía Telegram.
 
 ## Requisitos
 
-- Docker y Docker Compose instalados
-- Cuenta de Tailscale (gratuita)
-- 4 GB RAM mínimo (8 GB recomendado)
-- 10 GB disco
+- Docker + Docker Compose
+- Cuenta de Tailscale (gratis)
+- Bot de Telegram (crear con @BotFather)
 
-## Instalación rápida
+## Paso 1: Configurar
 
 ```bash
-# 1. Crear directorios
-sudo mkdir -p /srv/contenedores/project-zomboid
-sudo mkdir -p /srv/data/project-zomboid/{server-files,server-data}
-sudo chown -R 1000:1000 /srv/data/project-zomboid
+git clone <url-del-repo>
+cd projectzomboid-docker-tailscale-telegrambot
+cp .env.example .env
+```
 
-# 2. Copiar archivos
-cp docker-compose.yml /srv/contenedores/project-zomboid/
-cp .env.example /srv/contenedores/project-zomboid/.env
+Edita `.env` y cambia:
 
-# 3. Editar .env (cambiar contraseñas)
-nano /srv/contenedores/project-zomboid/.env
+| Variable | Qué poner |
+|----------|-----------|
+| `RCON_PASSWORD` | Contraseña RCON del servidor |
+| `ADMIN_PASSWORD` | Contraseña de administrador |
+| `TELEGRAM_BOT_TOKEN` | Token de @BotFather |
+| `TELEGRAM_CHAT_ID` | Tu ID de chat de Telegram |
 
-# 4. Arrancar
-cd /srv/contenedores/project-zomboid
-docker compose pull
+## Paso 2: Arrancar Tailscale
+
+```bash
+docker compose up -d tailscale
+```
+
+Abre los logs y busca la URL de autenticación:
+
+```bash
+docker compose logs -f tailscale
+```
+
+Abre la URL en tu navegador, inicia sesión con tu cuenta
+de Tailscale y acepta la autenticación.
+
+## Paso 3: Arrancar el servidor
+
+Una vez autenticado Tailscale:
+
+```bash
 docker compose up -d
+```
 
-# 5. Ver logs (esperar "LuaNet: Initialization [DONE]")
+Arrancan: Project Zomboid, Telegram Bot y Docker Proxy.
+
+## Paso 4: Verificar
+
+```bash
+docker compose ps
 docker compose logs -f projectzomboid
 ```
 
-## Configuración de mods
+Cuando veas `*** SERVER STARTED ***`, el servidor está listo.
+Conéctate desde el cliente de Project Zomboid usando la IP
+de Tailscale del servidor.
 
-Editar `server-data/Server/<SERVER_NAME>.ini`:
+## Uso diario
 
-```ini
-Mods=damnlib;NeatUI_Framework;...
-WorkshopItems=3171167894;3508537032;...
-DoLuaChecksum=false
+| Acción | Comando |
+|--------|---------|
+| Ver estado | `docker compose ps` |
+| Ver logs | `docker compose logs -f projectzomboid` |
+| Apagar | `docker compose stop projectzomboid` |
+| Reiniciar | `docker compose restart projectzomboid` |
+| Reiniciar mundo | `./scripts/reset-server.sh` |
+
+## Admin vía Telegram
+
+El bot permite:
+
+- Ver estado del servidor
+- Listar jugadores conectados
+- Kickear/banear jugadores
+- Cambiar roles
+- Arrancar/apagar/reiniciar el servidor
+- Guardar la partida
+
+## Seguridad
+
+- **Tailscale**: sin ports expuestos al exterior
+- **Docker Proxy**: el bot solo controla el contenedor de PZ
+- **Input validación**: previene inyección de comandos
+
+## Estructura
+
 ```
-
-Reiniciar: `docker compose restart projectzomboid`
-
-## Conectar al servidor
-
-```bash
-# Obtener IP de Tailscale
-docker compose exec tailscale tailscale ip -4
+├── docker-compose.yml    ← 4 servicios
+├── .env.example          ← plantilla de configuración
+├── scripts/
+│   └── reset-server.sh   ← reiniciar mundo/personajes
+├── bot/                  ← Telegram bot
+├── proxy/                ← Docker socket proxy
+└── docs/                 ← documentación técnica
 ```
-
-En Project Zomboid: **Join → Favorites → Add**
-- IP: `100.x.y.z` (la IP de Tailscale)
-- Puerto: `16261`
-
-El jugador debe tener Tailscale instalado y los mismos mods suscritos en Steam Workshop.
-
-## Documentación
-
-- [Configuración y mods](docs/configuracion.md)
-- [AntiCheat y Skills](docs/anticheat-y-skills.md)
-- [Resetear servidor](docs/reset-servidor.md)
-- [Troubleshooting](docs/troubleshooting.md)
 
 ## Créditos
 
