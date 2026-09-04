@@ -1,6 +1,6 @@
 .env
 logs.txt
-logs2.txt
+logs*.txt
 estado-docker.txt
 test-results.txt
 
