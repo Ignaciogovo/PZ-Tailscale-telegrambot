@@ -71,11 +71,9 @@ services:
     env_file:
       - .env
     environment:
-      RCON_HOST: projectzomboid
-      RCON_PORT: ${RCON_PORT:-27015}
       PZ_CONTAINER: project-zomboid
       PZ_DB_PATH: /pz-data/db/server-zomboid.db
-      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      DOCKER_HOST: http://docker-socket-proxy:2375
     volumes:
       - ./data/project-zomboid/server-data:/pz-data:ro
     depends_on:

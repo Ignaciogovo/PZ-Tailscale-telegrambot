@@ -1,18 +1,15 @@
 import os
 import logging
-import time
 import sqlite3
-import subprocess
 import re
-from rcon import Client
+import json
+import httpx
 
 logger = logging.getLogger(__name__)
 
-RCON_HOST = os.getenv("RCON_HOST", "127.0.0.1")
-RCON_PORT = int(os.getenv("RCON_PORT", "27015"))
-RCON_PASSWORD = os.getenv("RCON_PASSWORD", "")
 PZ_DB_PATH = os.getenv("PZ_DB_PATH", "/pz-data/db/server-zomboid.db")
 PZ_CONTAINER = os.getenv("PZ_CONTAINER", "project-zomboid")
+DOCKER_HOST = os.getenv("DOCKER_HOST", "http://127.0.0.1:2375")
 
 VALID_ROLES = {"admin", "moderator", "user", "observer", "gm"}
 
@@ -29,31 +26,31 @@ def validate_steam_id(steam_id: str) -> bool:
 def validate_role(role: str) -> bool:
     return role in VALID_ROLES
 
+def rcon_exec(command: str, timeout: int = 15) -> str | None:
+    try:
+        with httpx.Client(timeout=timeout) as c:
+            resp = c.post(f"{DOCKER_HOST}/rcon", json={"command": command})
+            if resp.status_code == 200:
+                return resp.json().get("output", "")
+            logger.warning(f"RCON proxy {resp.status_code}: {resp.text[:200]}")
+            return None
+    except Exception as e:
+        logger.warning(f"RCON proxy error: {e}")
+        return None
+
 def rcon_call(command: str) -> str:
     logger.info(f"Ejecutando RCON: {command}")
-    last_error = None
-    for attempt in range(2):
-        try:
-            with Client(RCON_HOST, RCON_PORT, passwd=RCON_PASSWORD, timeout=15) as client:
-                result = client.run(command)
-                logger.info(f"RCON resultado: {result[:100]}")
-                return result
-        except Exception as e:
-            last_error = e
-            logger.warning(f"RCON intento {attempt + 1} falló: {e}")
-            if attempt == 0:
-                time.sleep(2)
-    logger.error("RCON agotado tras 2 intentos")
-    raise last_error
+    result = rcon_exec(command)
+    if result is not None:
+        return result
+    logger.warning("RCON proxy falló, sin fallback (red no disponible)")
+    raise ConnectionError("RCON no disponible")
 
 def get_players_fast() -> list[dict]:
-    try:
-        with Client(RCON_HOST, RCON_PORT, passwd=RCON_PASSWORD, timeout=5) as client:
-            result = client.run("players")
-            return _parse_players(result)
-    except Exception as e:
-        logger.warning(f"RCON fast falló: {e}")
-        return []
+    result = rcon_exec("players", timeout=8)
+    if result is not None:
+        return _parse_players(result)
+    return []
 
 def _parse_players(response: str) -> list[dict]:
     players = []
@@ -156,29 +153,28 @@ def unban_player(steam_id: str) -> str:
         raise ValueError(f"Steam ID inválido: {steam_id}")
     return rcon_call(f"unbanid {steam_id}")
 
-def _docker_command(args: list[str], timeout: int = 10) -> tuple[bool, str]:
+def _docker_api(method: str, path: str, timeout: int = 10, params: dict = None) -> tuple[bool, str]:
     try:
-        result = subprocess.run(
-            ["docker"] + args,
-            capture_output=True, text=True, timeout=timeout
-        )
-        if result.returncode == 0:
-            return True, result.stdout.strip()
-        return False, result.stderr.strip()
-    except subprocess.TimeoutExpired:
+        with httpx.Client(timeout=timeout) as client:
+            resp = getattr(client, method)(f"{DOCKER_HOST}{path}", params=params)
+            if resp.status_code in (200, 204):
+                return True, resp.text.strip() if resp.text else ""
+            return False, resp.text.strip()
+    except httpx.TimeoutException:
         return False, "Timeout"
     except Exception as e:
         return False, str(e)
 
 def get_container_status() -> tuple[bool, str]:
-    ok, output = _docker_command([
-        "inspect", "--format", "{{.State.Status}} {{.State.Health.Status}}", PZ_CONTAINER
-    ])
+    ok, output = _docker_api("get", f"/containers/{PZ_CONTAINER}/json")
     if not ok:
-        return False, "not_found" if "No such" in output else f"error: {output}"
-    parts = output.split()
-    status = parts[0] if parts else "unknown"
-    health = parts[1] if len(parts) > 1 else "none"
+        return False, "not_found" if "No such" in output or "404" in output else f"error: {output}"
+    try:
+        state = json.loads(output).get("State", {})
+        status = state.get("Status", "unknown")
+        health = state.get("Health", {}).get("Status", "none")
+    except (json.JSONDecodeError, AttributeError):
+        return False, "parse_error"
     if status != "running":
         return False, status
     if health in ("starting", "unhealthy"):
@@ -187,23 +183,23 @@ def get_container_status() -> tuple[bool, str]:
 
 def start_container() -> tuple[bool, str]:
     logger.info(f"Iniciando contenedor {PZ_CONTAINER}")
-    ok, output = _docker_command(["start", PZ_CONTAINER])
-    if ok:
+    ok, output = _docker_api("post", f"/containers/{PZ_CONTAINER}/start")
+    if ok or "already started" in output.lower():
         return True, "Servidor arrancando..."
-    if "No such" in output:
+    if "No such" in output or "404" in output:
         return False, "Contenedor no existe. Ejecuta: docker compose up -d projectzomboid"
     return False, f"Error: {output}"
 
 def stop_container() -> tuple[bool, str]:
     logger.info(f"Deteniendo contenedor {PZ_CONTAINER}")
-    ok, output = _docker_command(["stop", "-t", "30", PZ_CONTAINER], timeout=60)
+    ok, output = _docker_api("post", f"/containers/{PZ_CONTAINER}/stop", params={"t": "30"}, timeout=60)
     if ok:
         return True, "Servidor apagado."
     return False, f"Error: {output}"
 
 def restart_container() -> tuple[bool, str]:
     logger.info(f"Reiniciando contenedor {PZ_CONTAINER}")
-    ok, output = _docker_command(["restart", "-t", "30", PZ_CONTAINER], timeout=60)
+    ok, output = _docker_api("post", f"/containers/{PZ_CONTAINER}/restart", params={"t": "30"}, timeout=60)
     if ok:
         return True, "Reiniciando..."
     return False, f"Error: {output}"
