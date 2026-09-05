@@ -29,6 +29,7 @@ if [ ! -f "$COMPOSE_FILE" ]; then
     exit 1
 fi
 
+COMPOSE_FILE="$(realpath "$COMPOSE_FILE")"
 COMPOSE_DIR="$(dirname "$COMPOSE_FILE")"
 
 echo ""
@@ -44,6 +45,7 @@ if [ "$ROUTE_OK" != "s" ] && [ "$ROUTE_OK" != "S" ]; then
         echo "Error: $COMPOSE_FILE no existe."
         exit 1
     fi
+    COMPOSE_FILE="$(realpath "$COMPOSE_FILE")"
     COMPOSE_DIR="$(dirname "$COMPOSE_FILE")"
 fi
 
@@ -54,6 +56,9 @@ HOST_DATA_PATH=""
 if command -v docker &>/dev/null; then
     HOST_DATA_PATH=$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null | \
         jq -r '.services.projectzomboid.volumes[] | select(.target == "/project-zomboid-config") | .source' 2>/dev/null)
+    if [ -z "$HOST_DATA_PATH" ]; then
+        echo "  Aviso: docker compose config no pudo resolver rutas, usando fallback..."
+    fi
 fi
 
 # Método 2: fallback con grep si docker no disponible
@@ -64,6 +69,10 @@ if [ -z "$HOST_DATA_PATH" ]; then
     fi
 fi
 
+if [ -z "$HOST_DATA_PATH" ]; then
+    echo "Error: No se pudo determinar la ruta de datos del servidor."
+    exit 1
+fi
 HOST_DATA_PATH="$(realpath "$HOST_DATA_PATH")"
 
 SERVER_INI="$HOST_DATA_PATH/Server/server-zomboid.ini"
