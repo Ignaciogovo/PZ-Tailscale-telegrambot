@@ -61,9 +61,14 @@ if command -v docker &>/dev/null; then
     fi
 fi
 
-# Método 2: fallback con grep si docker no disponible
+# Método 2: grep por línea que contiene /project-zomboid-config (absoluta o relativa)
 if [ -z "$HOST_DATA_PATH" ]; then
-    HOST_DATA_PATH=$(grep -m1 '\./.*server-data:' "$COMPOSE_FILE" | sed 's/^.*- //' | sed 's/:.*//')
+    HOST_DATA_PATH=$(grep -m1 '/project-zomboid-config' "$COMPOSE_FILE" | sed 's/^ *- //' | sed 's/:.*//')
+fi
+
+# Método 3: grep por server-data (absoluta o relativa)
+if [ -z "$HOST_DATA_PATH" ]; then
+    HOST_DATA_PATH=$(grep -m1 'server-data:' "$COMPOSE_FILE" | sed 's/^ *- //' | sed 's/:.*//')
     if [[ "$HOST_DATA_PATH" != /* ]]; then
         HOST_DATA_PATH="$COMPOSE_DIR/$HOST_DATA_PATH"
     fi
@@ -71,6 +76,7 @@ fi
 
 if [ -z "$HOST_DATA_PATH" ]; then
     echo "Error: No se pudo determinar la ruta de datos del servidor."
+    echo "  No se encontró '/project-zomboid-config' ni 'server-data:' en $COMPOSE_FILE"
     exit 1
 fi
 HOST_DATA_PATH="$(realpath "$HOST_DATA_PATH")"
