@@ -81,8 +81,32 @@ if [ -z "$HOST_DATA_PATH" ]; then
 fi
 HOST_DATA_PATH="$(realpath "$HOST_DATA_PATH")"
 
-SERVER_INI="$HOST_DATA_PATH/Server/server-zomboid.ini"
 SAVES_PATH="$HOST_DATA_PATH/Saves/Multiplayer"
+
+# --- Obtener nombre del servidor ---
+# Método 1: buscar .ini en Server/ y leer ServerName
+SERVER_INI=""
+SERVER_NAME=""
+INI_FILE=$(find "$HOST_DATA_PATH/Server" -maxdepth 1 -name "*.ini" 2>/dev/null | head -1)
+if [ -n "$INI_FILE" ]; then
+    SERVER_INI="$INI_FILE"
+    SERVER_NAME=$(grep '^ServerName=' "$INI_FILE" 2>/dev/null | cut -d= -f2)
+fi
+
+# Método 2: fallback a .env
+if [ -z "$SERVER_NAME" ]; then
+    if [ -f "$COMPOSE_DIR/.env" ]; then
+        SERVER_NAME=$(grep '^SERVER_NAME=' "$COMPOSE_DIR/.env" | cut -d= -f2)
+    fi
+fi
+if [ -z "$SERVER_NAME" ]; then
+    SERVER_NAME="server-zomboid"
+fi
+
+# Si no encontramos .ini, construir ruta por defecto
+if [ -z "$SERVER_INI" ]; then
+    SERVER_INI="$HOST_DATA_PATH/Server/$SERVER_NAME.ini"
+fi
 
 echo ""
 echo "Ruta datos servidor: $HOST_DATA_PATH"
@@ -93,14 +117,6 @@ echo "Saves: $SAVES_PATH"
 if [ ! -f "$SERVER_INI" ]; then
     echo "Error: $SERVER_INI no encontrado."
     exit 1
-fi
-
-# --- Obtener SERVER_NAME del .env ---
-if [ -f "$COMPOSE_DIR/.env" ]; then
-    SERVER_NAME=$(grep '^SERVER_NAME=' "$COMPOSE_DIR/.env" | cut -d= -f2)
-fi
-if [ -z "$SERVER_NAME" ]; then
-    SERVER_NAME="server-zomboid"
 fi
 
 SAVE_WORLD="$SAVES_PATH/$SERVER_NAME"
