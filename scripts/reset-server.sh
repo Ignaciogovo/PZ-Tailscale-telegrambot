@@ -29,6 +29,7 @@ if [ ! -f "$COMPOSE_FILE" ]; then
     exit 1
 fi
 
+COMPOSE_FILE="$(realpath "$COMPOSE_FILE")"
 COMPOSE_DIR="$(dirname "$COMPOSE_FILE")"
 
 echo ""
@@ -44,15 +45,33 @@ if [ "$ROUTE_OK" != "s" ] && [ "$ROUTE_OK" != "S" ]; then
         echo "Error: $COMPOSE_FILE no existe."
         exit 1
     fi
+    COMPOSE_FILE="$(realpath "$COMPOSE_FILE")"
     COMPOSE_DIR="$(dirname "$COMPOSE_FILE")"
 fi
 
 # --- Parsear volume mount del host ---
-HOST_DATA_PATH=$(grep -m1 '\./.*server-data:' "$COMPOSE_FILE" | sed 's/^.*- //' | sed 's/:.*//')
+HOST_DATA_PATH=""
 
-# Resolver ruta relativa y limpiar
-if [[ "$HOST_DATA_PATH" != /* ]]; then
-    HOST_DATA_PATH="$COMPOSE_DIR/$HOST_DATA_PATH"
+# Método 1: docker compose config (resuelve rutas absolutas)
+if command -v docker &>/dev/null; then
+    HOST_DATA_PATH=$(docker compose -f "$COMPOSE_FILE" config --format json 2>/dev/null | \
+        jq -r '.services.projectzomboid.volumes[] | select(.target == "/project-zomboid-config") | .source' 2>/dev/null)
+    if [ -z "$HOST_DATA_PATH" ]; then
+        echo "  Aviso: docker compose config no pudo resolver rutas, usando fallback..."
+    fi
+fi
+
+# Método 2: fallback con grep si docker no disponible
+if [ -z "$HOST_DATA_PATH" ]; then
+    HOST_DATA_PATH=$(grep -m1 '\./.*server-data:' "$COMPOSE_FILE" | sed 's/^.*- //' | sed 's/:.*//')
+    if [[ "$HOST_DATA_PATH" != /* ]]; then
+        HOST_DATA_PATH="$COMPOSE_DIR/$HOST_DATA_PATH"
+    fi
+fi
+
+if [ -z "$HOST_DATA_PATH" ]; then
+    echo "Error: No se pudo determinar la ruta de datos del servidor."
+    exit 1
 fi
 HOST_DATA_PATH="$(realpath "$HOST_DATA_PATH")"
 
