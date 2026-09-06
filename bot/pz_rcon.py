@@ -1,4 +1,5 @@
 import os
+import glob
 import logging
 import sqlite3
 import re
@@ -69,8 +70,36 @@ def _parse_players(response: str) -> list[dict]:
             })
     return players
 
+def resolve_db_path() -> str:
+    explicit = os.getenv("PZ_DB_PATH", PZ_DB_PATH)
+    if explicit and os.path.isfile(explicit):
+        return explicit
+    candidates = [explicit] if explicit else []
+    server_name = (os.getenv("SERVER_NAME") or "").strip()
+    db_dir = os.path.dirname(explicit) if explicit else "/pz-data/db"
+    if server_name and re.match(r'^[a-zA-Z0-9_.-]+$', server_name):
+        derived = os.path.join(db_dir, f"{server_name}.db")
+        if os.path.isfile(derived):
+            return derived
+        candidates.append(derived)
+    found = sorted(glob.glob(os.path.join(db_dir, "*.db")))
+    if len(found) == 1:
+        logger.warning(f"DB {candidates} no encontrada, usando {found[0]}")
+        return found[0]
+    if len(found) > 1:
+        for f in found:
+            if server_name and os.path.basename(f) == f"{server_name}.db":
+                return f
+        logger.warning(f"DB {candidates} no encontrada, varias *.db: {found}, usando {found[0]}")
+        return found[0]
+    raise FileNotFoundError(
+        f"DB no encontrada. Buscado: {', '.join(candidates) or 'nada'} "
+        f"(SERVER_NAME={server_name or 'no definido'}, dir={db_dir})"
+    )
+
 def get_db_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(f"file:{PZ_DB_PATH}?mode=ro", uri=True)
+    db_path = resolve_db_path()
+    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
     conn.row_factory = sqlite3.Row
     return conn
 
