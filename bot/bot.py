@@ -101,6 +101,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text += f"   Última conexión: {u['last_connection']}\n\n"
             
             await safe_edit(query, text, reply_markup=players_menu(all_users, connected_names, banned_ids))
+        except FileNotFoundError as e:
+            logger.warning(f"DB no disponible: {e}")
+            await safe_edit(query, f"⚠️ {e}", reply_markup=main_menu(online))
         except Exception as e:
             await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
 
@@ -129,6 +132,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text += f"Última conexión: {user_info['last_connection']}"
             
             await safe_edit(query, text, reply_markup=player_detail_menu(username, is_banned))
+        except FileNotFoundError as e:
+            logger.warning(f"DB no disponible: {e}")
+            await safe_edit(query, f"⚠️ {e}", reply_markup=main_menu(online))
         except Exception as e:
             await safe_edit(query, f"Error: {e}", reply_markup=main_menu(online))
 
